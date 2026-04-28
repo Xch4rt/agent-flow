@@ -1,0 +1,43 @@
+{
+  "name": "agent-flow",
+  "version": "0.1.0",
+  "description": "Codex-first workflow and memory layer for software project continuity.",
+  "type": "module",
+  "bin": {
+    "agent-flow": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "codex",
+    "ai",
+    "cli",
+    "developer-tools"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^12.1.0",
+    "execa": "^9.6.0",
+    "fs-extra": "^11.3.0",
+    "picocolors": "^1.1.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^22.13.14",
+    "tsx": "^4.20.5",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.0.0"
+}

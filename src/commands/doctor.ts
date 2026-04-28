@@ -1,0 +1,96 @@
+import path from 'node:path';
+import fs from 'fs-extra';
+import pc from 'picocolors';
+import { execa } from 'execa';
+import { detectProject } from '../core/detect-project.js';
+import { getMemoryFiles, readMemoryEntries } from '../core/jsonl-memory.js';
+
+export const planningFiles = [
+  '.planning/PROJECT.md',
+  '.planning/REQUIREMENTS.md',
+  '.planning/ROADMAP.md',
+  '.planning/STATE.md',
+  '.planning/DECISIONS.md',
+  '.planning/OPEN_QUESTIONS.md',
+];
+
+export const codexSkillFiles = [
+  '.codex/skills/flow-onboard/SKILL.md',
+  '.codex/skills/flow-resume/SKILL.md',
+  '.codex/skills/flow-quick/SKILL.md',
+  '.codex/skills/flow-plan/SKILL.md',
+  '.codex/skills/flow-verify/SKILL.md',
+  '.codex/skills/flow-close/SKILL.md',
+];
+
+async function commandExists(command: string): Promise<boolean> {
+  try {
+    await execa(command, ['--version']);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function runDoctor(options: { cwd?: string } = {}): Promise<void> {
+  const root = options.cwd ?? process.cwd();
+  const detection = await detectProject(root);
+  const checks: Array<{ label: string; ok: boolean; detail?: string }> = [];
+
+  for (const file of ['AGENTS.md', '.agent-flow/config.json']) {
+    checks.push({
+      label: file,
+      ok: await fs.pathExists(path.join(root, file)),
+    });
+  }
+
+  for (const file of planningFiles) {
+    checks.push({
+      label: file,
+      ok: await fs.pathExists(path.join(root, file)),
+    });
+  }
+
+  for (const file of getMemoryFiles(root)) {
+    checks.push({
+      label: path.relative(root, file),
+      ok: await fs.pathExists(file),
+    });
+  }
+
+  for (const file of codexSkillFiles) {
+    checks.push({
+      label: file,
+      ok: await fs.pathExists(path.join(root, file)),
+    });
+  }
+
+  const entries = await readMemoryEntries(root);
+  const parseErrors = entries.filter((entry) => {
+    return typeof entry.value === 'object' && entry.value !== null && 'parseError' in entry.value;
+  });
+
+  checks.push({
+    label: 'memory JSONL parseability',
+    ok: parseErrors.length === 0,
+    detail: parseErrors.length > 0 ? `${parseErrors.length} invalid entr${parseErrors.length === 1 ? 'y' : 'ies'}` : undefined,
+  });
+
+  if (detection.packageManager !== 'unknown') {
+    checks.push({
+      label: `${detection.packageManager} available`,
+      ok: await commandExists(detection.packageManager),
+    });
+  }
+
+  console.log(pc.bold('agent-flow doctor'));
+
+  for (const check of checks) {
+    console.log(`${check.ok ? pc.green('ok') : pc.red('fail')} ${check.label}${check.detail ? ` - ${check.detail}` : ''}`);
+  }
+
+  const failed = checks.filter((check) => !check.ok).length;
+  if (failed > 0) {
+    process.exitCode = 1;
+  }
+}
