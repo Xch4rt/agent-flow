@@ -12,9 +12,18 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/cli.ts",
+    "prepare": "npm run build",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Xch4rt/agent-flow.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Xch4rt/agent-flow/issues"
+  },
+  "homepage": "https://github.com/Xch4rt/agent-flow#readme",
   "keywords": [
     "codex",
     "ai",

@@ -3,13 +3,19 @@ import fs from 'fs-extra';
 import { describe, expect, it } from 'vitest';
 
 describe('README daily workflow', () => {
-  it('documents the first-time and daily Codex lifecycle', async () => {
+  it('documents the product-oriented Codex lifecycle', async () => {
     const readme = await fs.readFile(path.join(process.cwd(), 'README.md'), 'utf8');
 
+    expect(readme).toContain('## What It Is');
+    expect(readme).toContain('## The Problem');
+    expect(readme).toContain('## Quick Start');
     expect(readme).toContain('## Daily Workflow');
-    expect(readme).toContain('### First-Time Setup');
-    expect(readme).toContain('### Daily Use');
-    expect(readme).toContain('### When To Use Each Skill');
+    expect(readme).toContain('## Available Skills');
+    expect(readme).toContain('## How Memory Works');
+    expect(readme).toContain('## Current Status / Roadmap');
+    expect(readme).toContain('## Limitations');
+    expect(readme).toContain('First-time setup:');
+    expect(readme).toContain('Daily use:');
     expect(readme).toContain('agent-flow init --codex');
     expect(readme).toContain('$flow-onboard');
     expect(readme).toContain('$flow-resume');
