@@ -17,6 +17,8 @@ describe('README daily workflow', () => {
     expect(readme).toContain('First-time setup:');
     expect(readme).toContain('Daily use:');
     expect(readme).toContain('agent-flow init --codex');
+    expect(readme).toContain('agent-flow onboard');
+    expect(readme).toContain('does not wipe custom content outside markers');
     expect(readme).toContain('$flow-onboard');
     expect(readme).toContain('$flow-resume');
     expect(readme).toContain('$flow-quick');

@@ -27,7 +27,7 @@ ${commandLine('Typecheck', detection.commands.typecheck)}
 
 ## Agent Workflow
 
-1. For a fresh repo, run \`$flow-onboard\` before \`$flow-resume\`.
+1. For a fresh repo, run \`agent-flow init --codex\`, then \`agent-flow onboard\`, then \`$flow-resume\`.
 2. Use \`.planning/STATE.md\` as the current project truth.
 3. Use \`.planning/DECISIONS.md\` for durable technical decisions.
 4. Use \`.memory/*.jsonl\` only for append-only memory entries.

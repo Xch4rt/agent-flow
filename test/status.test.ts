@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runInit } from '../src/commands/init.js';
 import { runStatus } from '../src/commands/status.js';
 import { appendMemoryEntry } from '../src/core/jsonl-memory.js';
+import { runOnboard } from '../src/commands/onboard.js';
 
 let tmpDir: string;
 
@@ -49,9 +50,24 @@ describe('status command', () => {
     expect(output).toContain('Detected commands:');
     expect(output).toContain('dev: pnpm dev');
     expect(output).toContain('Missing Codex skills: 0');
+    expect(output).toContain('Onboarded: no');
     expect(output).toContain('.memory/modules.jsonl: 1 entries');
     expect(output).toContain('Planning state modified:');
     expect(output).toContain('empty .memory/events.jsonl');
     expect(output).toContain('project is likely not onboarded');
+  });
+
+  it('reports onboarded yes after deterministic onboard', async () => {
+    await runInit({ codex: true, cwd: tmpDir });
+    await runOnboard({ cwd: tmpDir });
+
+    vi.mocked(console.log).mockClear();
+    await runStatus({ cwd: tmpDir });
+
+    const output = vi.mocked(console.log).mock.calls.map((call) => String(call[0])).join('\n');
+
+    expect(output).toContain('Onboarded: yes');
+    expect(output).toContain('Last onboarded:');
+    expect(output).not.toContain('project is likely not onboarded');
   });
 });

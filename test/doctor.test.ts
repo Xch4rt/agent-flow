@@ -4,6 +4,7 @@ import fs from 'fs-extra';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { codexSkillFiles, runDoctor } from '../src/commands/doctor.js';
 import { runInit } from '../src/commands/init.js';
+import { runOnboard } from '../src/commands/onboard.js';
 
 let tmpDir: string;
 
@@ -31,8 +32,22 @@ describe('doctor checks', () => {
     ]);
   });
 
-  it('reports all expected checks in an initialized repo', async () => {
+  it('warns when initialized but not onboarded', async () => {
     await runInit({ codex: true, cwd: tmpDir });
+
+    vi.mocked(console.log).mockClear();
+    await runDoctor({ cwd: tmpDir });
+
+    const output = vi.mocked(console.log).mock.calls.map((call) => String(call[0])).join('\n');
+
+    expect(output).toContain('fail onboarding generated sections');
+    expect(output).toContain('fail onboarding memory event');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('reports all expected checks after onboarding', async () => {
+    await runInit({ codex: true, cwd: tmpDir });
+    await runOnboard({ cwd: tmpDir });
 
     vi.mocked(console.log).mockClear();
     await runDoctor({ cwd: tmpDir });
@@ -45,6 +60,8 @@ describe('doctor checks', () => {
     expect(output).toContain('.memory/events.jsonl');
     expect(output).toContain('.codex/skills/flow-close/SKILL.md');
     expect(output).toContain('memory JSONL parseability');
+    expect(output).toContain('ok onboarding generated sections');
+    expect(output).toContain('ok onboarding memory event');
     expect(process.exitCode).toBeUndefined();
   });
 });

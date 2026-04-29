@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.2.0
+
+Deterministic repository onboarding.
+
+- Added `agent-flow onboard`.
+- Added generated onboarding sections with `agent-flow:onboard` markers.
+- Added onboarding health to `agent-flow status`.
+- Added onboarding checks to `agent-flow doctor`.
+- Updated Codex skills to prefer deterministic onboarding before agent-guided enrichment.
+- Added safe onboarding behavior: `--dry-run`, `--refresh`, generated-section replacement, and custom content preservation.
+- Avoided duplicate module memory entries during onboarding refresh.
+
 ## v0.1.0
 
 Initial Codex-first MVP.

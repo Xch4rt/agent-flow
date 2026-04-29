@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { flowCloseSkill, flowResumeSkill } from '../src/adapters/codex/templates.js';
+import { flowCloseSkill, flowOnboardSkill, flowResumeSkill } from '../src/adapters/codex/templates.js';
 import type { ProjectDetection } from '../src/core/detect-project.js';
 
 const detection: ProjectDetection = {
@@ -14,9 +14,19 @@ describe('Codex skill templates', () => {
   it('flow-resume warns when the project has not been onboarded', () => {
     const skill = flowResumeSkill(detection);
 
+    expect(skill).toContain('after `agent-flow onboard` has been run');
+    expect(skill).toContain('`$flow-onboard` is optional enrichment');
     expect(skill).toContain('First detect shallow or fresh state');
-    expect(skill).toContain('This project has not been onboarded yet. Run `$flow-onboard` first.');
+    expect(skill).toContain('This project has not been onboarded yet. Run `agent-flow onboard` first.');
     expect(skill).toContain('offer a lightweight resume from existing files only');
+    expect(skill).not.toContain('after `$flow-onboard` has been run');
+  });
+
+  it('flow-onboard mentions deterministic CLI onboarding', () => {
+    const skill = flowOnboardSkill(detection);
+
+    expect(skill).toContain('agent-flow onboard');
+    expect(skill).toContain('deterministic onboarding');
   });
 
   it('flow-close uses createdAt and prefers the memory append CLI', () => {

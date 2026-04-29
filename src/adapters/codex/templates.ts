@@ -25,7 +25,15 @@ export function flowOnboardSkill(detection: ProjectDetection): string {
 
 Use when agent-flow was just installed or the planning files are thin.
 
-Goal: create the initial project memory that makes future \`$flow-resume\` calls useful without the user explaining the repo.
+First prefer deterministic onboarding when the CLI is available:
+
+\`\`\`sh
+agent-flow onboard
+\`\`\`
+
+Then inspect and improve anything the CLI could not infer.
+
+Goal: combine \`agent-flow onboard\` baseline context with Codex inspection so future \`$flow-resume\` calls are useful without the user explaining the repo.
 
 Inspect:
 
@@ -62,7 +70,9 @@ export function flowResumeSkill(detection: ProjectDetection): string {
   return `${header('flow-resume', 'Resume a Codex session with current state, recent memory, decisions, risks, and next actions.')}
 # flow-resume
 
-Use at the start of a normal session after \`$flow-onboard\` has been run. Do not change files unless the user asks.
+Use at the start of a normal session after \`agent-flow onboard\` has been run. Do not change files unless the user asks.
+
+\`$flow-onboard\` is optional enrichment when deterministic onboarding is not enough.
 
 First detect shallow or fresh state:
 
@@ -72,10 +82,10 @@ First detect shallow or fresh state:
 When not onboarded, say exactly:
 
 \`\`\`text
-This project has not been onboarded yet. Run \`$flow-onboard\` first.
+This project has not been onboarded yet. Run \`agent-flow onboard\` first.
 \`\`\`
 
-Then offer a lightweight resume from existing files only. Do not pretend durable project memory exists.
+Then mention \`$flow-onboard\` can add agent-assisted context after deterministic onboarding, and offer a lightweight resume from existing files only. Do not pretend durable project memory exists.
 
 Read:
 

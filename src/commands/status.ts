@@ -3,6 +3,7 @@ import fs from 'fs-extra';
 import pc from 'picocolors';
 import { detectProject } from '../core/detect-project.js';
 import { getMemoryFiles, readMemoryEntries } from '../core/jsonl-memory.js';
+import { getOnboardingState } from '../core/onboard.js';
 import { codexSkillFiles, planningFiles } from './doctor.js';
 
 const coreFiles = [
@@ -57,9 +58,8 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
   const eventsExists = await fs.pathExists(eventsPath);
   const eventsContent = eventsExists ? await fs.readFile(eventsPath, 'utf8') : '';
   const statePath = path.join(root, '.planning/STATE.md');
-  const stateContent = (await fs.pathExists(statePath)) ? await fs.readFile(statePath, 'utf8') : '';
-  const likelyNotOnboarded =
-    !eventsContent.trim() || !stateContent.trim() || stateContent.includes('Initialized with agent-flow.');
+  const onboarding = await getOnboardingState(root);
+  const likelyNotOnboarded = !onboarding.onboarded;
 
   console.log(pc.bold('agent-flow status'));
   console.log(`Package manager: ${detection.packageManager}`);
@@ -76,6 +76,8 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
   console.log(`Missing planning files: ${missingPlanning.length}`);
   console.log(`Missing memory files: ${missingMemory.length}`);
   console.log(`Missing Codex skills: ${missingSkills.length}`);
+  console.log(`Onboarded: ${onboarding.onboarded ? 'yes' : 'no'}`);
+  console.log(`Last onboarded: ${onboarding.lastOnboardedAt ?? 'never'}`);
 
   console.log(`Planning state modified: ${await modifiedAt(statePath)}`);
   console.log('Memory files:');
@@ -91,7 +93,7 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
     ...missingMemory.map((file) => `missing memory file: ${file}`),
     ...missingSkills.map((file) => `missing Codex skill: ${file}`),
     eventsExists && !eventsContent.trim() ? 'empty .memory/events.jsonl' : undefined,
-    likelyNotOnboarded ? 'project is likely not onboarded; run $flow-onboard' : undefined,
+    likelyNotOnboarded ? 'project is likely not onboarded; run agent-flow onboard' : undefined,
   ].filter((warning): warning is string => Boolean(warning));
 
   if (warnings.length > 0) {

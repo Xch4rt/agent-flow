@@ -55,13 +55,13 @@ Initialize a project:
 
 ```sh
 agent-flow init --codex
+agent-flow onboard
 ```
 
-Open Codex in the repository, then run:
+Open Codex in the repository, then start with:
 
 ```text
-$flow-onboard
-$flow-close
+$flow-resume
 ```
 
 From then on, start future sessions with:
@@ -81,9 +81,9 @@ init -> onboard -> close -> resume -> work -> verify -> close
 First-time setup:
 
 1. Run `agent-flow init --codex`
-2. Open Codex in the repo
-3. Run `$flow-onboard`
-4. Run `$flow-close`
+2. Run `agent-flow onboard`
+3. Open Codex in the repo
+4. Run `$flow-resume`
 
 Daily use:
 
@@ -106,6 +106,7 @@ agent-flow memory search "auth"
 
 ```sh
 agent-flow init --codex [--force] [--force-memory]
+agent-flow onboard [--refresh] [--dry-run] [--force]
 agent-flow status
 agent-flow doctor
 agent-flow memory list
@@ -117,7 +118,7 @@ agent-flow memory append --file events --type event --summary "..." [--module na
 
 | Skill | Use it when |
 | --- | --- |
-| `flow-onboard` | You are setting up a repo for the first time and need Codex to inspect it, identify commands/modules/risks, and populate project memory. |
+| `flow-onboard` | You want Codex to add human-level context after `agent-flow onboard` creates the deterministic baseline. |
 | `flow-resume` | You are starting a new session and want Codex to summarize current state, recent events, decisions, risks, and next actions. |
 | `flow-quick` | You need a small, scoped code change with minimal diff. |
 | `flow-plan` | You need to break larger work into phases with acceptance criteria. |
@@ -154,11 +155,16 @@ agent-flow memory append --file events --type event --summary "Documented initia
 
 Existing files are protected by default. `--force` does not overwrite memory files; use `--force-memory` only when you explicitly want to reset memory.
 
+Use `agent-flow onboard` for deterministic baseline context. Use `$flow-onboard` when you want Codex to enrich that baseline with judgment from reading the repo.
+
+For `agent-flow onboard`, `--force` replaces generated onboarding sections only. It does not wipe custom content outside markers and does not wipe memory. `--refresh` appends a new onboarding event; existing module entries are not duplicated.
+
 ## Current Status / Roadmap
 
 Current MVP:
 
 - `agent-flow init --codex`
+- `agent-flow onboard`
 - `agent-flow status`
 - `agent-flow doctor`
 - `agent-flow memory list`
@@ -169,14 +175,14 @@ Current MVP:
 
 Near-term roadmap:
 
-- Improve status and doctor checks from real dogfooding feedback
+- Improve deterministic onboarding from real dogfooding feedback
 - Improve project detection for more repo shapes
 - Add stronger memory validation
 - Keep the Codex workflow small, safe, and predictable before adding more integrations
 
 ## Limitations
 
-- Codex must still run `$flow-onboard` once to create useful project memory.
+- `agent-flow onboard` creates baseline memory, but Codex may still need `$flow-onboard` for deeper project judgment.
 - Memory is file-based and keyword-searchable; there is no semantic search yet.
 - Monorepos are not deeply understood yet.
 - Detection is intentionally simple.

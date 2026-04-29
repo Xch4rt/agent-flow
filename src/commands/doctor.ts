@@ -4,6 +4,7 @@ import pc from 'picocolors';
 import { execa } from 'execa';
 import { detectProject } from '../core/detect-project.js';
 import { getMemoryFiles, readMemoryEntries } from '../core/jsonl-memory.js';
+import { getOnboardingState } from '../core/onboard.js';
 
 export const planningFiles = [
   '.planning/PROJECT.md',
@@ -75,6 +76,22 @@ export async function runDoctor(options: { cwd?: string } = {}): Promise<void> {
     ok: parseErrors.length === 0,
     detail: parseErrors.length > 0 ? `${parseErrors.length} invalid entr${parseErrors.length === 1 ? 'y' : 'ies'}` : undefined,
   });
+
+  const initialized = await fs.pathExists(path.join(root, '.agent-flow/config.json'));
+  const onboarding = await getOnboardingState(root);
+
+  if (initialized) {
+    checks.push({
+      label: 'onboarding generated sections',
+      ok: onboarding.hasGeneratedSections,
+      detail: onboarding.hasGeneratedSections ? undefined : 'run agent-flow onboard',
+    });
+    checks.push({
+      label: 'onboarding memory event',
+      ok: onboarding.hasOnboardingEvent,
+      detail: onboarding.hasOnboardingEvent ? undefined : 'run agent-flow onboard',
+    });
+  }
 
   if (detection.packageManager !== 'unknown') {
     checks.push({

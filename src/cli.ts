@@ -4,6 +4,7 @@ import pc from 'picocolors';
 import { runDoctor } from './commands/doctor.js';
 import { runInit } from './commands/init.js';
 import { runMemoryAppend, runMemoryList, runMemorySearch } from './commands/memory.js';
+import { runOnboard } from './commands/onboard.js';
 import { runStatus } from './commands/status.js';
 
 const program = new Command();
@@ -11,7 +12,7 @@ const program = new Command();
 program
   .name('agent-flow')
   .description('Codex-first workflow and memory layer for software project continuity.')
-  .version('0.1.0');
+  .version('0.2.0');
 
 program
   .command('init')
@@ -21,6 +22,16 @@ program
   .option('--force-memory', 'Overwrite existing memory JSONL files')
   .action(async (options: { codex?: boolean; force?: boolean; forceMemory?: boolean }) => {
     await runInit(options);
+  });
+
+program
+  .command('onboard')
+  .description('Inspect the repository and write deterministic baseline project context.')
+  .option('--refresh', 'Refresh generated onboarding sections and append a new onboarding memory event')
+  .option('--dry-run', 'Print what would change without modifying files')
+  .option('--force', 'Replace generated onboarding sections only, preserving custom content and memory')
+  .action(async (options: { refresh?: boolean; dryRun?: boolean; force?: boolean }) => {
+    await runOnboard(options);
   });
 
 program
