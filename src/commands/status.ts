@@ -2,7 +2,7 @@ import path from 'node:path';
 import fs from 'fs-extra';
 import pc from 'picocolors';
 import { detectProject } from '../core/detect-project.js';
-import { getMemoryFiles, readMemoryEntries } from '../core/jsonl-memory.js';
+import { getInvalidMemoryEntries, getMemoryFiles, readMemoryEntries } from '../core/jsonl-memory.js';
 import { getOnboardingState } from '../core/onboard.js';
 import { codexSkillFiles, planningFiles } from './doctor.js';
 
@@ -54,6 +54,7 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
   }
 
   const memoryEntries = await readMemoryEntries(root);
+  const invalidMemoryEntries = getInvalidMemoryEntries(memoryEntries);
   const eventsPath = path.join(root, '.memory/events.jsonl');
   const eventsExists = await fs.pathExists(eventsPath);
   const eventsContent = eventsExists ? await fs.readFile(eventsPath, 'utf8') : '';
@@ -75,6 +76,7 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
   console.log(`Missing core files: ${missingCore.length}`);
   console.log(`Missing planning files: ${missingPlanning.length}`);
   console.log(`Missing memory files: ${missingMemory.length}`);
+  console.log(`Invalid memory entries: ${invalidMemoryEntries.length}`);
   console.log(`Missing Codex skills: ${missingSkills.length}`);
   console.log(`Onboarded: ${onboarding.onboarded ? 'yes' : 'no'}`);
   console.log(`Last onboarded: ${onboarding.lastOnboardedAt ?? 'never'}`);
@@ -92,6 +94,7 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
     ...missingPlanning.map((file) => `missing planning file: ${file}`),
     ...missingMemory.map((file) => `missing memory file: ${file}`),
     ...missingSkills.map((file) => `missing Codex skill: ${file}`),
+    invalidMemoryEntries.length > 0 ? `invalid memory entries: ${invalidMemoryEntries.length}` : undefined,
     eventsExists && !eventsContent.trim() ? 'empty .memory/events.jsonl' : undefined,
     likelyNotOnboarded ? 'project is likely not onboarded; run agent-flow onboard' : undefined,
   ].filter((warning): warning is string => Boolean(warning));

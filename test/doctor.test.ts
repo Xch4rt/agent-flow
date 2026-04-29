@@ -60,8 +60,31 @@ describe('doctor checks', () => {
     expect(output).toContain('.memory/events.jsonl');
     expect(output).toContain('.codex/skills/flow-close/SKILL.md');
     expect(output).toContain('memory JSONL parseability');
+    expect(output).toContain('memory schema validity');
     expect(output).toContain('ok onboarding generated sections');
     expect(output).toContain('ok onboarding memory event');
     expect(process.exitCode).toBeUndefined();
+  });
+
+  it('fails when memory entries do not match schemas', async () => {
+    await runInit({ codex: true, cwd: tmpDir });
+    await fs.writeFile(path.join(tmpDir, '.memory/modules.jsonl'), JSON.stringify({
+      createdAt: '2026-01-01T00:00:00.000Z',
+      type: 'module',
+      summary: 'Missing required module name.',
+    }) + '\n');
+
+    vi.mocked(console.log).mockClear();
+    await runDoctor({ cwd: tmpDir });
+
+    const output = vi.mocked(console.log).mock.calls.map((call) => String(call[0])).join('\n');
+
+    expect(output).toContain('fail memory schema validity');
+    expect(output).toContain('1 invalid entry');
+    expect(output).toContain('Memory validation details:');
+    expect(output).toContain('.memory/modules.jsonl:1');
+    expect(output).toContain('error module: Required');
+    expect(output).toContain('Run agent-flow memory validate for the full report.');
+    expect(process.exitCode).toBe(1);
   });
 });

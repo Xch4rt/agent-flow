@@ -100,6 +100,7 @@ agent-flow status
 agent-flow doctor
 agent-flow memory list
 agent-flow memory search "auth"
+agent-flow memory context "auth"
 ```
 
 ## Commands
@@ -110,8 +111,10 @@ agent-flow onboard [--refresh] [--dry-run] [--force]
 agent-flow status
 agent-flow doctor
 agent-flow memory list
-agent-flow memory search <query>
-agent-flow memory append --file events --type event --summary "..." [--module name]
+agent-flow memory search <query> [--file events|modules|decisions|errors] [--type type] [--module name] [--limit n]
+agent-flow memory context <query> [--limit n]
+agent-flow memory validate
+agent-flow memory append --file events --type event --summary "..." [--module name] [--files a,b] [--tags tag]
 ```
 
 ## Available Skills
@@ -147,11 +150,50 @@ Append-only memory lives in `.memory/`:
 
 Codex skills live in `.codex/skills/`.
 
-Memory can be appended from the CLI:
+All memory entries are JSONL objects with:
+
+- `createdAt`
+- `type`
+- `summary`
+
+Additional structured fields keep memory useful without adding databases or semantic search:
+
+- `events`: optional `module`, `files`, `tags`
+- `modules`: required `module`, optional `files`, `tags`
+- `decisions`: optional `module`, `status`, `rationale`, `alternatives`
+- `errors`: optional `module`, `cause`, `solution`
+
+Memory can be appended from the CLI. Entries are validated by target file and exact duplicates are rejected by default using file, type, module, and normalized summary:
 
 ```sh
-agent-flow memory append --file events --type event --summary "Documented initial architecture" --module api
+agent-flow memory append --file events --type change --summary "Documented initial architecture" --module api --files src/api.ts --tags architecture
+agent-flow memory append --file modules --type module --summary "API module owns HTTP routes" --module api --files src/api.ts
+agent-flow memory append --file decisions --type decision --summary "Keep memory local JSONL" --status accepted --rationale "Simple, reviewable, and repo-local"
+agent-flow memory append --file errors --type error --summary "Build failed on missing env validation" --cause "Required env var was unchecked" --solution "Validate env at startup"
 ```
+
+Use `--allow-duplicate` only when repeating the same durable entry is intentional.
+
+Search stays local and non-semantic:
+
+```sh
+agent-flow memory search "billing" --file events --type change --module billing --limit 5
+agent-flow memory context "billing"
+```
+
+`memory context` prints a compact deterministic context pack with relevant events, modules, decisions, errors, and suggested Codex usage.
+
+### Memory validation and migration notes
+
+v0.3.0 validates memory schemas. Old or manually edited memory entries may fail if they are missing `createdAt`, `type`, `summary`, or `module` for entries in `modules.jsonl`.
+
+Use this command to find exact file and line errors:
+
+```sh
+agent-flow memory validate
+```
+
+Fix invalid JSONL entries manually, or re-add durable entries using `agent-flow memory append` so the CLI writes the required fields. Validation never modifies memory files.
 
 Existing files are protected by default. `--force` does not overwrite memory files; use `--force-memory` only when you explicitly want to reset memory.
 
@@ -169,6 +211,8 @@ Current MVP:
 - `agent-flow doctor`
 - `agent-flow memory list`
 - `agent-flow memory search <query>`
+- `agent-flow memory context <query>`
+- `agent-flow memory validate`
 - `agent-flow memory append`
 - Codex skills for onboarding, resume, quick work, planning, verification, and closeout
 - File-based planning and memory
@@ -177,7 +221,6 @@ Near-term roadmap:
 
 - Improve deterministic onboarding from real dogfooding feedback
 - Improve project detection for more repo shapes
-- Add stronger memory validation
 - Keep the Codex workflow small, safe, and predictable before adding more integrations
 
 ## Limitations

@@ -3,7 +3,7 @@ import fs from 'fs-extra';
 import pc from 'picocolors';
 import { execa } from 'execa';
 import { detectProject } from '../core/detect-project.js';
-import { getMemoryFiles, readMemoryEntries } from '../core/jsonl-memory.js';
+import { formatInvalidMemoryEntry, getInvalidMemoryEntries, getMemoryFiles, readMemoryEntries } from '../core/jsonl-memory.js';
 import { getOnboardingState } from '../core/onboard.js';
 
 export const planningFiles = [
@@ -70,11 +70,17 @@ export async function runDoctor(options: { cwd?: string } = {}): Promise<void> {
   const parseErrors = entries.filter((entry) => {
     return typeof entry.value === 'object' && entry.value !== null && 'parseError' in entry.value;
   });
+  const invalidMemoryEntries = getInvalidMemoryEntries(entries);
 
   checks.push({
     label: 'memory JSONL parseability',
     ok: parseErrors.length === 0,
-    detail: parseErrors.length > 0 ? `${parseErrors.length} invalid entr${parseErrors.length === 1 ? 'y' : 'ies'}` : undefined,
+      detail: parseErrors.length > 0 ? `${parseErrors.length} invalid entr${parseErrors.length === 1 ? 'y' : 'ies'}` : undefined,
+  });
+  checks.push({
+    label: 'memory schema validity',
+    ok: invalidMemoryEntries.length === 0,
+    detail: invalidMemoryEntries.length > 0 ? `${invalidMemoryEntries.length} invalid entr${invalidMemoryEntries.length === 1 ? 'y' : 'ies'}` : undefined,
   });
 
   const initialized = await fs.pathExists(path.join(root, '.agent-flow/config.json'));
@@ -104,6 +110,20 @@ export async function runDoctor(options: { cwd?: string } = {}): Promise<void> {
 
   for (const check of checks) {
     console.log(`${check.ok ? pc.green('ok') : pc.red('fail')} ${check.label}${check.detail ? ` - ${check.detail}` : ''}`);
+  }
+
+  if (invalidMemoryEntries.length > 0) {
+    const shown = invalidMemoryEntries.slice(0, 3);
+    console.log(pc.yellow('Memory validation details:'));
+    for (const entry of shown) {
+      for (const line of formatInvalidMemoryEntry(entry)) {
+        console.log(line);
+      }
+    }
+    if (invalidMemoryEntries.length > shown.length) {
+      console.log(`...and ${invalidMemoryEntries.length - shown.length} more invalid entr${invalidMemoryEntries.length - shown.length === 1 ? 'y' : 'ies'}.`);
+    }
+    console.log('Run agent-flow memory validate for the full report.');
   }
 
   const failed = checks.filter((check) => !check.ok).length;

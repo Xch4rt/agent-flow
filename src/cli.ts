@@ -3,7 +3,7 @@ import { Command } from 'commander';
 import pc from 'picocolors';
 import { runDoctor } from './commands/doctor.js';
 import { runInit } from './commands/init.js';
-import { runMemoryAppend, runMemoryList, runMemorySearch } from './commands/memory.js';
+import { runMemoryAppend, runMemoryContext, runMemoryList, runMemorySearch, runMemoryValidate } from './commands/memory.js';
 import { runOnboard } from './commands/onboard.js';
 import { runStatus } from './commands/status.js';
 
@@ -12,7 +12,7 @@ const program = new Command();
 program
   .name('agent-flow')
   .description('Codex-first workflow and memory layer for software project continuity.')
-  .version('0.2.0');
+  .version('0.3.0');
 
 program
   .command('init')
@@ -61,8 +61,28 @@ memory
   .command('search')
   .argument('<query>', 'Text to search for in memory JSONL files')
   .description('Search local memory entries.')
-  .action(async (query: string) => {
-    await runMemorySearch(query);
+  .option('--file <file>', 'Memory file: events, decisions, errors, or modules')
+  .option('--type <type>', 'Filter by exact memory type')
+  .option('--module <module>', 'Filter by exact module')
+  .option('--limit <limit>', 'Maximum matches to print')
+  .action(async (query: string, options: { file?: string; type?: string; module?: string; limit?: string }) => {
+    await runMemorySearch(query, options);
+  });
+
+memory
+  .command('context')
+  .argument('<query>', 'Text to build a compact local memory context pack')
+  .description('Build a compact deterministic context pack from local memory.')
+  .option('--limit <limit>', 'Maximum matches per memory file')
+  .action(async (query: string, options: { limit?: string }) => {
+    await runMemoryContext(query, options);
+  });
+
+memory
+  .command('validate')
+  .description('Validate all local memory JSONL entries without modifying files.')
+  .action(async () => {
+    await runMemoryValidate();
   });
 
 memory
@@ -72,7 +92,28 @@ memory
   .requiredOption('--type <type>', 'Memory entry type')
   .requiredOption('--summary <summary>', 'Short memory summary')
   .option('--module <module>', 'Related module or area')
-  .action(async (options: { file: string; type: string; summary: string; module?: string }) => {
+  .option('--status <status>', 'Decision status')
+  .option('--rationale <rationale>', 'Decision rationale')
+  .option('--alternatives <items>', 'Comma-separated decision alternatives')
+  .option('--cause <cause>', 'Known error cause')
+  .option('--solution <solution>', 'Known error solution')
+  .option('--files <files>', 'Comma-separated related files')
+  .option('--tags <tags>', 'Comma-separated tags')
+  .option('--allow-duplicate', 'Append even if an exact duplicate already exists')
+  .action(async (options: {
+    file: string;
+    type: string;
+    summary: string;
+    module?: string;
+    status?: string;
+    rationale?: string;
+    alternatives?: string;
+    cause?: string;
+    solution?: string;
+    files?: string;
+    tags?: string;
+    allowDuplicate?: boolean;
+  }) => {
     await runMemoryAppend(options);
   });
 

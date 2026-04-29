@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.3.0
+
+Structured memory quality improvements.
+
+- Added Zod schemas for events, modules, decisions, and errors memory files.
+- Added memory append validation by target file.
+- Added `agent-flow memory validate` with file, line, field, raw preview, and suggested fixes.
+- Added duplicate prevention for exact memory entries, with `--allow-duplicate` escape hatch.
+- Added `agent-flow memory search` filters: `--file`, `--type`, `--module`, and `--limit`.
+- Added `agent-flow memory context <query>` for compact deterministic context packs.
+- Updated `agent-flow status` to report invalid memory entry counts.
+- Updated `agent-flow doctor` to validate memory schemas and surface detailed diagnostics.
+- Updated `flow-close` and `flow-resume` Codex skills for higher-quality memory usage.
+
 ## v0.2.0
 
 Deterministic repository onboarding.

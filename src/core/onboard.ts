@@ -316,7 +316,7 @@ export async function onboardRepository(
       type: 'onboard',
       summary: `Detected ${inspection.detection.stacks.join(', ') || 'unknown stack'} with ${inspection.detection.packageManager} package manager.`,
       module: 'agent-flow',
-    });
+    }, { allowDuplicate: Boolean(options.refresh) });
     memoryAppended.push('.memory/events.jsonl');
 
     const newDirectories = inspection.importantDirectories.slice(0, 5).filter((directory) => !knownModules.has(directory));

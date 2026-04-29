@@ -97,6 +97,12 @@ Read:
 6. \`.planning/OPEN_QUESTIONS.md\`
 7. The last relevant entries from \`.memory/events.jsonl\`, \`.memory/decisions.jsonl\`, \`.memory/errors.jsonl\`, and \`.memory/modules.jsonl\`
 
+When the CLI is available, use this helper to gather targeted memory before reading raw JSONL:
+
+\`\`\`sh
+agent-flow memory context "current task or module"
+\`\`\`
+
 Run lightweight checks:
 
 - \`git status --short\`
@@ -244,7 +250,10 @@ Append JSONL entries when useful:
 Prefer the CLI append helper when available:
 
 \`\`\`sh
-agent-flow memory append --file events --type event --summary "Short durable note" --module api
+agent-flow memory append --file events --type change --summary "Added deterministic memory validation for CLI append" --module memory --files src/core/jsonl-memory.ts --tags validation,cli
+agent-flow memory append --file modules --type module --summary "Memory commands own append, search, and context output" --module memory --files src/commands/memory.ts --tags cli
+agent-flow memory append --file decisions --type decision --summary "Keep memory local and schema-validated without semantic search" --status accepted --rationale "v0.3.0 scope is memory quality only"
+agent-flow memory append --file errors --type error --summary "Memory append rejected invalid module entries" --module memory --cause "modules require module" --solution "include --module for modules entries"
 \`\`\`
 
 Supported \`--file\` values are \`events\`, \`decisions\`, \`errors\`, and \`modules\`. Edit JSONL manually only if the CLI command is unavailable.
@@ -258,7 +267,10 @@ JSONL entry shape:
 Rules:
 
 - Keep entries short and factual.
-- Do not duplicate every final response.
+- Avoid vague entries like "updated files" or "fixed bug"; name the durable fact future sessions need.
+- Do not duplicate every final response or append exact duplicates.
+- Record decisions only when a real durable choice was made.
+- Record errors only when both cause and solution are known.
 - Do not record secrets.
 - Mark uncertainty explicitly.
 - Prefer one useful memory entry over many noisy entries.

@@ -38,6 +38,7 @@ describe('status command', () => {
     await appendMemoryEntry(tmpDir, 'modules', {
       type: 'module',
       summary: 'App router owns pages.',
+      module: 'app',
     });
 
     vi.mocked(console.log).mockClear();
@@ -50,6 +51,7 @@ describe('status command', () => {
     expect(output).toContain('Detected commands:');
     expect(output).toContain('dev: pnpm dev');
     expect(output).toContain('Missing Codex skills: 0');
+    expect(output).toContain('Invalid memory entries: 0');
     expect(output).toContain('Onboarded: no');
     expect(output).toContain('.memory/modules.jsonl: 1 entries');
     expect(output).toContain('Planning state modified:');
@@ -69,5 +71,22 @@ describe('status command', () => {
     expect(output).toContain('Onboarded: yes');
     expect(output).toContain('Last onboarded:');
     expect(output).not.toContain('project is likely not onboarded');
+  });
+
+  it('reports invalid memory entry counts', async () => {
+    await runInit({ codex: true, cwd: tmpDir });
+    await fs.writeFile(path.join(tmpDir, '.memory/modules.jsonl'), JSON.stringify({
+      createdAt: '2026-01-01T00:00:00.000Z',
+      type: 'module',
+      summary: 'Missing required module name.',
+    }) + '\n');
+
+    vi.mocked(console.log).mockClear();
+    await runStatus({ cwd: tmpDir });
+
+    const output = vi.mocked(console.log).mock.calls.map((call) => String(call[0])).join('\n');
+
+    expect(output).toContain('Invalid memory entries: 1');
+    expect(output).toContain('invalid memory entries: 1');
   });
 });
