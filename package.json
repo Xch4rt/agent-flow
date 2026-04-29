@@ -7,11 +7,15 @@
     "agent-flow": "./dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/cli.ts",
+    "prepack": "npm run build",
     "prepare": "npm run build",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"

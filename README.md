@@ -102,6 +102,17 @@ agent-flow memory list
 agent-flow memory search "auth"
 ```
 
+## Commands
+
+```sh
+agent-flow init --codex [--force] [--force-memory]
+agent-flow status
+agent-flow doctor
+agent-flow memory list
+agent-flow memory search <query>
+agent-flow memory append --file events --type event --summary "..." [--module name]
+```
+
 ## Available Skills
 
 | Skill | Use it when |
