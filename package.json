@@ -1,6 +1,6 @@
 {
   "name": "agent-flow",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Codex-first workflow and memory layer for software project continuity.",
   "type": "module",
   "bin": {
