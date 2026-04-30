@@ -31,9 +31,10 @@ ${commandLine('Typecheck', detection.commands.typecheck)}
 2. Use \`.planning/STATE.md\` as the current project truth.
 3. Use \`.planning/DECISIONS.md\` for durable technical decisions.
 4. Use \`.memory/*.jsonl\` only for append-only memory entries.
-5. Do not overwrite memory without explicit user instruction.
-6. Prefer small scoped changes and avoid unrelated refactors.
-7. Run detected verification commands before final response when possible.
+5. Prefer \`agent-flow context <task>\` for focused task context before non-trivial agent work.
+6. Do not overwrite memory without explicit user instruction.
+7. Prefer small scoped changes and avoid unrelated refactors.
+8. Run detected verification commands before final response when possible.
 
 ## Memory Files
 

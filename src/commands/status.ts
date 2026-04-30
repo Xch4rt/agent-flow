@@ -77,6 +77,7 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
   console.log(`Missing planning files: ${missingPlanning.length}`);
   console.log(`Missing memory files: ${missingMemory.length}`);
   console.log(`Invalid memory entries: ${invalidMemoryEntries.length}`);
+  console.log(`Context pack memory: ${memoryEntries.length >= 3 ? 'enough for useful packs' : 'limited'}`);
   console.log(`Missing Codex skills: ${missingSkills.length}`);
   console.log(`Onboarded: ${onboarding.onboarded ? 'yes' : 'no'}`);
   console.log(`Last onboarded: ${onboarding.lastOnboardedAt ?? 'never'}`);

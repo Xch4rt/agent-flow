@@ -87,6 +87,14 @@ This project has not been onboarded yet. Run \`agent-flow onboard\` first.
 
 Then mention \`$flow-onboard\` can add agent-assisted context after deterministic onboarding, and offer a lightweight resume from existing files only. Do not pretend durable project memory exists.
 
+For a specific task, prefer the project-aware context pack before reading raw memory:
+
+\`\`\`sh
+agent-flow context "current task or module"
+\`\`\`
+
+Avoid reading all memory when a context pack has enough relevant state.
+
 Read:
 
 1. \`AGENTS.md\`
@@ -97,7 +105,7 @@ Read:
 6. \`.planning/OPEN_QUESTIONS.md\`
 7. The last relevant entries from \`.memory/events.jsonl\`, \`.memory/decisions.jsonl\`, \`.memory/errors.jsonl\`, and \`.memory/modules.jsonl\`
 
-When the CLI is available, use this helper to gather targeted memory before reading raw JSONL:
+When the CLI is available and you need memory-only detail, use this helper before reading raw JSONL:
 
 \`\`\`sh
 agent-flow memory context "current task or module"
@@ -134,12 +142,13 @@ Use when the task is narrow, local, and can be completed in one pass.
 Workflow:
 
 1. Restate the exact target behavior in one sentence.
-2. Read \`.planning/STATE.md\`, \`AGENTS.md\`, and only the code paths needed.
-3. Check \`git status --short\` and avoid unrelated dirty files.
-4. Make the smallest coherent diff. Prefer existing patterns over new abstractions.
-5. Add or update tests only when the behavior is risky or already covered nearby.
-6. Run the narrowest useful verification command.
-7. Update memory only if the change reveals reusable project knowledge.
+2. Before a non-trivial change, run or recommend \`agent-flow context "<task>"\` for focused project context.
+3. Read \`.planning/STATE.md\`, \`AGENTS.md\`, and only the code paths needed.
+4. Check \`git status --short\` and avoid unrelated dirty files.
+5. Make the smallest coherent diff. Prefer existing patterns over new abstractions.
+6. Add or update tests only when the behavior is risky or already covered nearby.
+7. Run the narrowest useful verification command.
+8. Update memory only if the change reveals reusable project knowledge.
 
 Guardrails:
 
@@ -168,13 +177,14 @@ Use when work crosses modules, changes architecture, affects data models, or has
 
 Workflow:
 
-1. Read \`.planning/PROJECT.md\`, \`.planning/REQUIREMENTS.md\`, \`.planning/ROADMAP.md\`, \`.planning/STATE.md\`, and relevant memory.
-2. Inspect the code paths that define the current behavior.
-3. Separate known requirements from assumptions.
-4. Break the work into phases that can be reviewed independently.
-5. Define acceptance criteria for each phase.
-6. Identify migration, compatibility, data, UX, and test risks.
-7. List verification commands and manual checks.
+1. Run or recommend \`agent-flow context "<feature or task>"\` before creating phases.
+2. Read \`.planning/PROJECT.md\`, \`.planning/REQUIREMENTS.md\`, \`.planning/ROADMAP.md\`, \`.planning/STATE.md\`, and relevant memory.
+3. Inspect the code paths that define the current behavior.
+4. Separate known requirements from assumptions.
+5. Break the work into phases that can be reviewed independently.
+6. Define acceptance criteria for each phase.
+7. Identify migration, compatibility, data, UX, and test risks.
+8. List verification commands and manual checks.
 
 Plan format:
 
@@ -233,6 +243,8 @@ export function flowCloseSkill(): string {
 # flow-close
 
 Use at the end of meaningful work. The goal is continuity, not a diary.
+
+Useful durable memory improves future \`agent-flow context "<task>"\` packs. Keep it concise and non-duplicated.
 
 Update:
 

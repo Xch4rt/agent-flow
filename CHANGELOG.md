@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.4.0
+
+Deterministic project-aware context packs.
+
+- Added `agent-flow context <task>` with `--module`, `--limit`, `--budget-lines`, `--json`, `--include-events`, `--include-open-questions`, and `--no-color`.
+- Added deterministic local relevance scoring across planning and JSONL memory, without embeddings, SQLite, MCP, or external services.
+- Added compact text and stable JSON output for task-focused agent handoff.
+- Added project summary and lightweight git context to context packs.
+- Suppressed superseded, deprecated, obsolete, and rejected decisions by default when active relevant decisions exist.
+- Updated generated Codex skills and `AGENTS.md` to prefer focused context packs before non-trivial agent work.
+- Updated documentation to clarify `memory search`, `memory context`, and project context pack usage.
+- Updated `agent-flow status` with a quiet context-pack memory signal.
+
 ## v0.3.0
 
 Structured memory quality improvements.

@@ -101,6 +101,7 @@ agent-flow doctor
 agent-flow memory list
 agent-flow memory search "auth"
 agent-flow memory context "auth"
+agent-flow context "fix billing webhook"
 ```
 
 ## Commands
@@ -110,6 +111,7 @@ agent-flow init --codex [--force] [--force-memory]
 agent-flow onboard [--refresh] [--dry-run] [--force]
 agent-flow status
 agent-flow doctor
+agent-flow context <task> [--module name] [--limit n] [--budget-lines n] [--json]
 agent-flow memory list
 agent-flow memory search <query> [--file events|modules|decisions|errors] [--type type] [--module name] [--limit n]
 agent-flow memory context <query> [--limit n]
@@ -183,6 +185,65 @@ agent-flow memory context "billing"
 
 `memory context` prints a compact deterministic context pack with relevant events, modules, decisions, errors, and suggested Codex usage.
 
+## Context Packs
+
+Context packs reduce token waste by turning local planning files, structured memory, and detected project commands into a compact task-focused brief. Instead of pasting all of `.planning/` and `.memory/`, ask for the context needed for the current task:
+
+```sh
+agent-flow context "fix billing webhook"
+```
+
+The command reads `.planning/STATE.md`, project planning notes, structured JSONL memory, and detected package scripts. It scores entries locally with deterministic keyword matching, exact phrase boosts, module preference, memory type priority, status, and recency. It does not use embeddings, semantic search, SQLite, MCP, or external services.
+
+Example output:
+
+```text
+# Context Pack
+
+Task:
+fix billing webhook
+
+Project Summary:
+- Package manager: pnpm
+- Stack: Next.js, Prisma
+- Commands: dev=pnpm dev, build=pnpm build, test=pnpm test, typecheck=pnpm typecheck
+
+Git Context:
+- Branch: main
+- Dirty: yes
+- Last commit: a1b2c3d Add billing webhook handler
+
+Current State:
+- Billing checkout is working; webhook retry handling is still under review.
+
+Relevant Modules:
+- [billing] Billing module owns checkout, invoices, and webhook idempotency.
+
+Relevant Decisions:
+- [accepted] Keep webhook processing idempotent with provider event ids.
+
+Relevant Errors:
+- [billing] Duplicate Stripe webhook processing created duplicate credits.
+  cause: Missing event id guard.
+  solution: Store processed event ids before applying credits.
+
+Verification Commands:
+- pnpm test
+- pnpm typecheck
+
+Suggested Agent Usage:
+- Use this context before running $flow-quick or $flow-plan.
+- Treat it as a starting point; inspect referenced files before editing.
+```
+
+Use `agent-flow context "<task>"` before `$flow-quick`, before `$flow-plan`, and when resuming a specific task. Use `--module billing` to prefer one area, `--budget-lines 60` for a tighter paste, and `--json` for structured output. Events and open questions are included by default; `--include-events` and `--include-open-questions` are default-on compatibility flags.
+
+Related commands:
+
+- `agent-flow memory search` is for raw local JSONL lookup.
+- `agent-flow memory context` is a memory-only context helper.
+- `agent-flow context` is the main project-aware context pack for agent work.
+
 ### Memory validation and migration notes
 
 v0.3.0 validates memory schemas. Old or manually edited memory entries may fail if they are missing `createdAt`, `type`, `summary`, or `module` for entries in `modules.jsonl`.
@@ -209,6 +270,7 @@ Current MVP:
 - `agent-flow onboard`
 - `agent-flow status`
 - `agent-flow doctor`
+- `agent-flow context <task>`
 - `agent-flow memory list`
 - `agent-flow memory search <query>`
 - `agent-flow memory context <query>`

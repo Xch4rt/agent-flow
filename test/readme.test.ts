@@ -10,6 +10,7 @@ describe('README daily workflow', () => {
     expect(readme).toContain('## The Problem');
     expect(readme).toContain('## Quick Start');
     expect(readme).toContain('## Daily Workflow');
+    expect(readme).toContain('## Context Packs');
     expect(readme).toContain('## Available Skills');
     expect(readme).toContain('## How Memory Works');
     expect(readme).toContain('## Current Status / Roadmap');
@@ -18,6 +19,8 @@ describe('README daily workflow', () => {
     expect(readme).toContain('Daily use:');
     expect(readme).toContain('agent-flow init --codex');
     expect(readme).toContain('agent-flow onboard');
+    expect(readme).toContain('agent-flow context "fix billing webhook"');
+    expect(readme).toContain('agent-flow context` is the main project-aware context pack');
     expect(readme).toContain('does not wipe custom content outside markers');
     expect(readme).toContain('$flow-onboard');
     expect(readme).toContain('$flow-resume');
