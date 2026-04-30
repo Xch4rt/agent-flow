@@ -20,13 +20,20 @@ import {
 import { runOnboard } from './commands/onboard.js';
 import { runStatus } from './commands/status.js';
 
+function readPackageVersion(): string {
+  const packageJsonPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as { version?: unknown };
+
+  return typeof packageJson.version === 'string' ? packageJson.version : '0.0.0';
+}
+
 export function createProgram(): Command {
   const program = new Command();
 
   program
     .name('agent-flow')
     .description('Codex-first workflow and memory layer for software project continuity.')
-    .version('0.5.0');
+    .version(readPackageVersion());
 
   program
     .command('init')

@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import packageJson from '../package.json' with { type: 'json' };
 import { createProgram, isCliEntrypoint } from '../src/cli.js';
 
 let tmpDir: string;
@@ -25,10 +26,10 @@ describe('CLI entrypoint', () => {
     expect(isCliEntrypoint(pathToFileURL(realCli).href, binLink)).toBe(true);
   });
 
-  it('keeps createProgram testable with version and help output', () => {
+  it('keeps createProgram version aligned with package.json and help output testable', () => {
     const program = createProgram();
 
-    expect(program.version()).toBe('0.5.0');
+    expect(program.version()).toBe(packageJson.version);
     expect(program.helpInformation()).toContain('agent-flow');
     expect(program.helpInformation()).toContain('memory');
   });
