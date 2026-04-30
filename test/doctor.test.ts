@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { codexSkillFiles, runDoctor } from '../src/commands/doctor.js';
 import { runInit } from '../src/commands/init.js';
 import { runOnboard } from '../src/commands/onboard.js';
+import { appendMemoryEntry } from '../src/core/jsonl-memory.js';
+import { queryMemoryIndex } from '../src/core/memory-index.js';
 
 let tmpDir: string;
 
@@ -86,5 +88,21 @@ describe('doctor checks', () => {
     expect(output).toContain('error module: Required');
     expect(output).toContain('Run agent-flow memory validate for the full report.');
     expect(process.exitCode).toBe(1);
+  });
+
+  it('validates memory index schema when present', async () => {
+    await runInit({ codex: true, cwd: tmpDir });
+    await appendMemoryEntry(tmpDir, 'events', {
+      type: 'change',
+      summary: 'Indexed memory was created.',
+    });
+    await queryMemoryIndex('indexed memory', { cwd: tmpDir });
+
+    vi.mocked(console.log).mockClear();
+    await runDoctor({ cwd: tmpDir });
+
+    const output = vi.mocked(console.log).mock.calls.map((call) => String(call[0])).join('\n');
+    expect(output).toContain('ok memory index schema');
+    expect(output).toContain('ok memory index query');
   });
 });

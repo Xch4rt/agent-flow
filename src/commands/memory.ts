@@ -1,5 +1,11 @@
 import pc from 'picocolors';
 import {
+  inspectMemoryIndex,
+  queryMemoryIndex,
+  rebuildMemoryIndex,
+  type IndexedMemoryEntry,
+} from '../core/memory-index.js';
+import {
   appendMemoryEntry,
   formatInvalidMemoryEntry,
   getInvalidMemoryEntries,
@@ -31,6 +37,31 @@ function parseLimit(value: string | number | undefined): number | undefined {
     throw new Error('--limit must be a positive integer.');
   }
   return limit;
+}
+
+function parseQueryOptions(options: {
+  cwd?: string;
+  module?: string;
+  drawer?: string;
+  type?: string;
+  status?: string;
+  limit?: string | number;
+}): {
+  cwd?: string;
+  module?: string;
+  drawer?: string;
+  type?: string;
+  status?: string;
+  limit?: number;
+} {
+  return {
+    ...(options.cwd ? { cwd: options.cwd } : {}),
+    ...(options.module ? { module: options.module } : {}),
+    ...(options.drawer ? { drawer: options.drawer } : {}),
+    ...(options.type ? { type: options.type } : {}),
+    ...(options.status ? { status: options.status } : {}),
+    ...(options.limit !== undefined ? { limit: parseLimit(options.limit) } : {}),
+  };
 }
 
 function parseSearchOptions(options: { file?: string; type?: string; module?: string; limit?: string | number }): SearchMemoryOptions {
@@ -80,6 +111,104 @@ export async function runMemorySearch(
 
   for (const match of matches) {
     console.log(`${pc.dim(`${match.file}:${match.line}`)} ${match.raw}`);
+  }
+}
+
+function formatQueryEntry(entry: IndexedMemoryEntry): string {
+  const parts = [
+    `#${entry.id}`,
+    entry.drawer,
+    entry.module ? `[${entry.module}]` : undefined,
+    entry.type,
+    entry.status ? `(${entry.status})` : undefined,
+  ].filter(Boolean).join(' ');
+  return `${pc.dim(parts)} ${entry.summary} ${pc.dim(entry.createdAt)}`;
+}
+
+export async function runMemoryQuery(
+  query: string,
+  options: {
+    cwd?: string;
+    module?: string;
+    drawer?: string;
+    type?: string;
+    status?: string;
+    limit?: string | number;
+    json?: boolean;
+  } = {},
+): Promise<void> {
+  const result = await queryMemoryIndex(query, parseQueryOptions(options));
+
+  if (options.json) {
+    console.log(JSON.stringify({
+      query,
+      items: result.entries,
+      warnings: result.warnings,
+    }, null, 2));
+    return;
+  }
+
+  console.log(pc.bold(`agent-flow memory query: ${query}`));
+  for (const warning of result.warnings) {
+    console.log(`${pc.yellow('warning')} ${warning}`);
+  }
+
+  if (result.entries.length === 0) {
+    console.log('No matches.');
+    return;
+  }
+
+  for (const entry of result.entries) {
+    console.log(formatQueryEntry(entry));
+  }
+}
+
+export async function runMemoryInspect(options: { cwd?: string } = {}): Promise<void> {
+  const root = options.cwd ?? process.cwd();
+  const inspect = await inspectMemoryIndex(root);
+
+  console.log(pc.bold('agent-flow memory inspect'));
+  console.log(`DB path: ${inspect.dbPath}`);
+  console.log(`DB exists: ${inspect.exists ? 'yes' : 'no'}`);
+  console.log(`Index status: ${inspect.status}`);
+  console.log(`Last sync: ${inspect.lastSyncAt ?? 'never'}`);
+  console.log(`Projects: ${inspect.projectCount}`);
+  console.log(`Modules: ${inspect.moduleCount}`);
+  console.log('Entries by drawer:');
+  for (const drawer of ['events', 'modules', 'decisions', 'errors', 'constraints', 'commands', 'files', 'open_questions']) {
+    console.log(`  ${drawer}: ${inspect.entryCounts[drawer] ?? 0}`);
+  }
+  console.log(`Invalid JSONL entries: ${inspect.invalidEntries}`);
+  console.log('Tracked JSONL files:');
+  for (const file of inspect.trackedFiles) {
+    console.log(`  ${file.file}: ${file.exists ? 'present' : 'missing'}`);
+  }
+  if (inspect.status === 'stale') {
+    console.log(`Suggested command: ${pc.bold('agent-flow memory rebuild')}`);
+  }
+}
+
+export async function runMemoryRebuild(options: { cwd?: string; dryRun?: boolean; json?: boolean } = {}): Promise<void> {
+  const root = options.cwd ?? process.cwd();
+  const result = await rebuildMemoryIndex(root, { dryRun: options.dryRun });
+
+  if (options.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(pc.bold('agent-flow memory rebuild'));
+  if ('dryRun' in result) {
+    console.log(`Would rebuild ${result.dbPath}`);
+    return;
+  }
+  console.log(`DB path: ${result.dbPath}`);
+  console.log(`Imported: ${result.imported}`);
+  console.log(`Updated: ${result.updated}`);
+  console.log(`Skipped invalid: ${result.skippedInvalid}`);
+  console.log(`Indexed entries: ${result.entries}`);
+  for (const warning of result.warnings) {
+    console.log(`${pc.yellow('warning')} ${warning}`);
   }
 }
 

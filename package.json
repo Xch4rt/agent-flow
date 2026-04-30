@@ -1,6 +1,6 @@
 {
   "name": "agent-flow",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Codex-first workflow and memory layer for software project continuity.",
   "type": "module",
   "bin": {
@@ -36,6 +36,7 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "better-sqlite3": "^12.9.0",
     "commander": "^12.1.0",
     "execa": "^9.6.0",
     "fs-extra": "^11.3.0",
@@ -51,6 +52,11 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
   },
   "packageManager": "pnpm@10.0.0"
 }

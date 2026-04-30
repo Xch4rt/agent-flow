@@ -3,6 +3,7 @@ import fs from 'fs-extra';
 import pc from 'picocolors';
 import { detectProject } from '../core/detect-project.js';
 import { getInvalidMemoryEntries, getMemoryFiles, readMemoryEntries } from '../core/jsonl-memory.js';
+import { getMemoryIndexState, inspectMemoryIndex } from '../core/memory-index.js';
 import { getOnboardingState } from '../core/onboard.js';
 import { codexSkillFiles, planningFiles } from './doctor.js';
 
@@ -61,6 +62,8 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
   const statePath = path.join(root, '.planning/STATE.md');
   const onboarding = await getOnboardingState(root);
   const likelyNotOnboarded = !onboarding.onboarded;
+  const memoryIndexState = await getMemoryIndexState(root);
+  const memoryIndexInspect = memoryIndexState.exists ? await inspectMemoryIndex(root) : undefined;
 
   console.log(pc.bold('agent-flow status'));
   console.log(`Package manager: ${detection.packageManager}`);
@@ -78,6 +81,11 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
   console.log(`Missing memory files: ${missingMemory.length}`);
   console.log(`Invalid memory entries: ${invalidMemoryEntries.length}`);
   console.log(`Context pack memory: ${memoryEntries.length >= 3 ? 'enough for useful packs' : 'limited'}`);
+  console.log(`Memory index DB: ${memoryIndexState.exists ? 'yes' : 'no'}`);
+  console.log(`Memory index state: ${memoryIndexState.status}`);
+  console.log(`Memory index in sync: ${memoryIndexState.status === 'in sync' ? 'yes' : 'no'}`);
+  console.log(`Memory index last sync: ${memoryIndexState.lastSyncAt ?? 'never'}`);
+  console.log(`Indexed entries: ${memoryIndexInspect ? Object.values(memoryIndexInspect.entryCounts).reduce((sum, count) => sum + count, 0) : 0}`);
   console.log(`Missing Codex skills: ${missingSkills.length}`);
   console.log(`Onboarded: ${onboarding.onboarded ? 'yes' : 'no'}`);
   console.log(`Last onboarded: ${onboarding.lastOnboardedAt ?? 'never'}`);
@@ -96,6 +104,7 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
     ...missingMemory.map((file) => `missing memory file: ${file}`),
     ...missingSkills.map((file) => `missing Codex skill: ${file}`),
     invalidMemoryEntries.length > 0 ? `invalid memory entries: ${invalidMemoryEntries.length}` : undefined,
+    memoryIndexState.status === 'stale' ? 'memory index is stale; memory query/context will auto-sync or run agent-flow memory rebuild' : undefined,
     eventsExists && !eventsContent.trim() ? 'empty .memory/events.jsonl' : undefined,
     likelyNotOnboarded ? 'project is likely not onboarded; run agent-flow onboard' : undefined,
   ].filter((warning): warning is string => Boolean(warning));

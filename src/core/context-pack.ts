@@ -3,6 +3,7 @@ import { execa } from 'execa';
 import fs from 'fs-extra';
 import { detectProject, type ProjectDetection } from './detect-project.js';
 import { readMemoryEntries, type MemoryEntry, type MemoryFileName } from './jsonl-memory.js';
+import { queryMemoryIndex, type IndexedMemoryEntry, type MemoryDrawer } from './memory-index.js';
 
 export type ContextPackOptions = {
   cwd?: string;
@@ -194,6 +195,27 @@ function memoryItem(entry: MemoryEntry, score: number): ScoredContextPackItem {
   };
 }
 
+function indexedItem(entry: IndexedMemoryEntry): ScoredContextPackItem {
+  return {
+    file: entry.source ?? '.agent-flow/memory.db',
+    type: entry.type,
+    ...(entry.module ? { module: entry.module } : {}),
+    ...(entry.status ? { status: entry.status } : {}),
+    summary: compact(entry.summary),
+    ...(entry.drawer === 'errors' && entry.body ? parseErrorBody(entry.body) : {}),
+    score: entry.score ?? 0,
+  };
+}
+
+function parseErrorBody(body: string): { cause?: string; solution?: string } {
+  const cause = body.split(/\r?\n/).find((line) => line && !line.startsWith('files:') && !line.startsWith('tags:'));
+  const solution = body.split(/\r?\n/).find((line) => line && line !== cause && !line.startsWith('files:') && !line.startsWith('tags:'));
+  return {
+    ...(cause ? { cause: compact(cause) } : {}),
+    ...(solution ? { solution: compact(solution) } : {}),
+  };
+}
+
 function stripScore(item: ScoredContextPackItem): ContextPackItem {
   const { score: _score, ...rest } = item;
   return rest;
@@ -263,6 +285,14 @@ function topScoredItems(entries: MemoryEntry[], file: MemoryFileName, task: stri
     .sort((a, b) => b.score - a.score || a.entry.line - b.entry.line)
     .slice(0, limit)
     .map(({ entry, score }) => memoryItem(entry, score));
+}
+
+async function indexedItems(root: string, task: string, drawer: MemoryDrawer, module: string | undefined, limit: number): Promise<{ items: ScoredContextPackItem[]; warnings: string[] }> {
+  const result = await queryMemoryIndex(task, { cwd: root, drawer, module, limit });
+  return {
+    items: result.entries.map(indexedItem),
+    warnings: result.warnings,
+  };
 }
 
 function filterInactiveDecisions(items: ScoredContextPackItem[], task: string, limit: number): ScoredContextPackItem[] {
@@ -340,16 +370,43 @@ export async function buildContextPack(task: string, options: ContextPackOptions
   if (!stateMd.trim()) warnings.push('missing .planning/STATE.md');
   if (entries.length === 0) warnings.push('not enough memory entries for a rich context pack');
 
+  let indexedMemory: {
+    modules: ScoredContextPackItem[];
+    decisions: ScoredContextPackItem[];
+    errors: ScoredContextPackItem[];
+    events: ScoredContextPackItem[];
+  } | undefined;
+
+  try {
+    const [indexedModules, indexedDecisions, indexedErrors, indexedEvents] = await Promise.all([
+      indexedItems(root, task, 'modules', module, limit),
+      indexedItems(root, task, 'decisions', module, limit),
+      indexedItems(root, task, 'errors', module, limit),
+      indexedItems(root, task, 'events', module, limit),
+    ]);
+    indexedMemory = {
+      modules: indexedModules.items,
+      decisions: indexedDecisions.items,
+      errors: indexedErrors.items,
+      events: indexedEvents.items,
+    };
+    for (const warning of [...indexedModules.warnings, ...indexedDecisions.warnings, ...indexedErrors.warnings, ...indexedEvents.warnings]) {
+      if (!warnings.includes(warning)) warnings.push(warning);
+    }
+  } catch (error) {
+    warnings.push(`memory index unavailable; used JSONL fallback (${error instanceof Error ? error.message : String(error)})`);
+  }
+
   const decisionItems = filterInactiveDecisions([
-    ...topScoredItems(entries, 'decisions', task, module, limit),
+    ...(indexedMemory?.decisions ?? topScoredItems(entries, 'decisions', task, module, limit)),
     ...planningListItems(decisionsMd, '.planning/DECISIONS.md', 'decision', task, module, limit),
   ].sort((a, b) => b.score - a.score), task, limit).map(stripScore);
 
   const items = {
-    modules: topItems(entries, 'modules', task, module, limit),
+    modules: (indexedMemory?.modules ?? topScoredItems(entries, 'modules', task, module, limit)).slice(0, limit).map(stripScore),
     decisions: decisionItems,
-    errors: topItems(entries, 'errors', task, module, limit),
-    events: options.includeEvents === false ? [] : topItems(entries, 'events', task, module, limit),
+    errors: (indexedMemory?.errors ?? topScoredItems(entries, 'errors', task, module, limit)).slice(0, limit).map(stripScore),
+    events: options.includeEvents === false ? [] : (indexedMemory?.events ?? topScoredItems(entries, 'events', task, module, limit)).slice(0, limit).map(stripScore),
     openQuestions: options.includeOpenQuestions === false
       ? []
       : planningListItems(openQuestionsMd, '.planning/OPEN_QUESTIONS.md', 'open-question', task, module, limit).map(stripScore),

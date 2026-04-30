@@ -4,6 +4,7 @@ import pc from 'picocolors';
 import { execa } from 'execa';
 import { detectProject } from '../core/detect-project.js';
 import { formatInvalidMemoryEntry, getInvalidMemoryEntries, getMemoryFiles, readMemoryEntries } from '../core/jsonl-memory.js';
+import { getMemoryIndexState, queryMemoryIndex, validateMemoryIndexSchema } from '../core/memory-index.js';
 import { getOnboardingState } from '../core/onboard.js';
 
 export const planningFiles = [
@@ -71,6 +72,7 @@ export async function runDoctor(options: { cwd?: string } = {}): Promise<void> {
     return typeof entry.value === 'object' && entry.value !== null && 'parseError' in entry.value;
   });
   const invalidMemoryEntries = getInvalidMemoryEntries(entries);
+  const memoryIndexState = await getMemoryIndexState(root);
 
   checks.push({
     label: 'memory JSONL parseability',
@@ -96,6 +98,41 @@ export async function runDoctor(options: { cwd?: string } = {}): Promise<void> {
       label: 'onboarding memory event',
       ok: onboarding.hasOnboardingEvent,
       detail: onboarding.hasOnboardingEvent ? undefined : 'run agent-flow onboard',
+    });
+  }
+
+  if (memoryIndexState.exists) {
+    const schema = validateMemoryIndexSchema(root);
+    checks.push({
+      label: 'memory index schema',
+      ok: schema.ok,
+      detail: schema.error,
+    });
+    try {
+      await queryMemoryIndex('agent-flow', { cwd: root, limit: 1 });
+      checks.push({
+        label: 'memory index query',
+        ok: true,
+      });
+    } catch (error) {
+      checks.push({
+        label: 'memory index query',
+        ok: false,
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
+    if (memoryIndexState.status === 'stale') {
+      checks.push({
+        label: 'memory index freshness',
+        ok: true,
+        detail: 'stale; run agent-flow memory rebuild or let memory query/context auto-sync',
+      });
+    }
+  } else if (entries.length > 0) {
+    checks.push({
+      label: 'memory index',
+      ok: true,
+      detail: 'missing; will be auto-created by memory query or context',
     });
   }
 

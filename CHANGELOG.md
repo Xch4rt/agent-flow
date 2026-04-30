@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.5.0
+
+Internal SQLite memory index.
+
+- Added `.agent-flow/memory.db` as an internal generated SQLite index while keeping `.memory/*.jsonl` as the reviewable source of truth.
+- Added `agent-flow memory query <query>` for deterministic indexed memory lookup.
+- Added `agent-flow memory inspect` and `agent-flow memory rebuild` for high-level index health and regeneration.
+- Updated `agent-flow context <task>` to prefer indexed memory with JSONL fallback.
+- Updated `agent-flow status` and `agent-flow doctor` with memory index awareness.
+- Updated generated Codex skills and `AGENTS.md` to describe indexed context packs without exposing low-level database management.
+
 ## v0.4.0
 
 Deterministic project-aware context packs.

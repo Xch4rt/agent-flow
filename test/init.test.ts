@@ -59,6 +59,8 @@ describe('init --codex', () => {
 
     await expect(fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8')).resolves.toContain('pnpm dev');
     await expect(fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8')).resolves.toContain('agent-flow context <task>');
+    await expect(fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8')).resolves.toContain('.agent-flow/memory.db');
+    await expect(fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8')).resolves.toContain('Do not manually edit it.');
     await expect(fs.readFile(path.join(tmpDir, '.planning/PROJECT.md'), 'utf8')).resolves.toContain('Next.js');
     await expect(fs.readJson(path.join(tmpDir, '.agent-flow/config.json'))).resolves.toMatchObject({
       agent: 'codex',

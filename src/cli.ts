@@ -1,11 +1,22 @@
 #!/usr/bin/env node
+import fs from 'node:fs';
+import path from 'node:path';
 import { Command } from 'commander';
 import pc from 'picocolors';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { runContext } from './commands/context.js';
 import { runDoctor } from './commands/doctor.js';
 import { runInit } from './commands/init.js';
-import { runMemoryAppend, runMemoryContext, runMemoryList, runMemorySearch, runMemoryValidate } from './commands/memory.js';
+import {
+  runMemoryAppend,
+  runMemoryContext,
+  runMemoryInspect,
+  runMemoryList,
+  runMemoryQuery,
+  runMemoryRebuild,
+  runMemorySearch,
+  runMemoryValidate,
+} from './commands/memory.js';
 import { runOnboard } from './commands/onboard.js';
 import { runStatus } from './commands/status.js';
 
@@ -15,7 +26,7 @@ export function createProgram(): Command {
   program
     .name('agent-flow')
     .description('Codex-first workflow and memory layer for software project continuity.')
-    .version('0.4.0');
+    .version('0.5.0');
 
   program
     .command('init')
@@ -96,6 +107,36 @@ export function createProgram(): Command {
     });
 
   memory
+    .command('query')
+    .argument('<query>', 'Text to query in the indexed project memory')
+    .description('Query the internal SQLite memory index.')
+    .option('--module <module>', 'Filter by exact module')
+    .option('--drawer <drawer>', 'Filter by memory drawer')
+    .option('--type <type>', 'Filter by exact memory type')
+    .option('--status <status>', 'Filter by exact status')
+    .option('--limit <limit>', 'Maximum matches to print')
+    .option('--json', 'Print structured JSON')
+    .action(async (query: string, options: { module?: string; drawer?: string; type?: string; status?: string; limit?: string; json?: boolean }) => {
+      await runMemoryQuery(query, options);
+    });
+
+  memory
+    .command('inspect')
+    .description('Inspect the internal SQLite memory index.')
+    .action(async () => {
+      await runMemoryInspect();
+    });
+
+  memory
+    .command('rebuild')
+    .description('Rebuild the internal SQLite memory index from JSONL memory.')
+    .option('--dry-run', 'Print what would happen without modifying the index')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { dryRun?: boolean; json?: boolean }) => {
+      await runMemoryRebuild(options);
+    });
+
+  memory
     .command('context')
     .argument('<query>', 'Text to build a compact local memory context pack')
     .description('Build a compact deterministic context pack from local memory.')
@@ -147,7 +188,20 @@ export function createProgram(): Command {
   return program;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+export function isCliEntrypoint(metaUrl: string, argvPath = process.argv[1]): boolean {
+  if (!argvPath) return false;
+
+  const modulePath = fileURLToPath(metaUrl);
+  const resolvedArgvPath = path.resolve(argvPath);
+
+  try {
+    return fs.realpathSync(modulePath) === fs.realpathSync(resolvedArgvPath);
+  } catch {
+    return path.resolve(modulePath) === resolvedArgvPath;
+  }
+}
+
+if (isCliEntrypoint(import.meta.url)) {
   try {
     await createProgram().parseAsync(process.argv);
   } catch (error) {

@@ -114,6 +114,9 @@ agent-flow doctor
 agent-flow context <task> [--module name] [--limit n] [--budget-lines n] [--json]
 agent-flow memory list
 agent-flow memory search <query> [--file events|modules|decisions|errors] [--type type] [--module name] [--limit n]
+agent-flow memory query <query> [--module name] [--drawer name] [--type type] [--status status] [--limit n] [--json]
+agent-flow memory inspect
+agent-flow memory rebuild [--dry-run] [--json]
 agent-flow memory context <query> [--limit n]
 agent-flow memory validate
 agent-flow memory append --file events --type event --summary "..." [--module name] [--files a,b] [--tags tag]
@@ -158,7 +161,7 @@ All memory entries are JSONL objects with:
 - `type`
 - `summary`
 
-Additional structured fields keep memory useful without adding databases or semantic search:
+Additional structured fields keep memory useful without adding semantic search:
 
 - `events`: optional `module`, `files`, `tags`
 - `modules`: required `module`, optional `files`, `tags`
@@ -180,10 +183,32 @@ Search stays local and non-semantic:
 
 ```sh
 agent-flow memory search "billing" --file events --type change --module billing --limit 5
+agent-flow memory query "billing webhook" --module billing --limit 5
 agent-flow memory context "billing"
 ```
 
 `memory context` prints a compact deterministic context pack with relevant events, modules, decisions, errors, and suggested Codex usage.
+
+## SQLite Memory Index
+
+JSONL remains the reviewable source of truth. The SQLite database at `.agent-flow/memory.db` is an internal generated query index for faster structured lookup and better context packs.
+
+No data leaves your machine. The index is auto-created, migrated, and synced from `.memory/*.jsonl` when query-producing commands need it:
+
+```sh
+agent-flow memory query "billing webhook"
+agent-flow context "fix billing webhook"
+```
+
+`agent-flow memory inspect` and `agent-flow status` are read-only state reports. They do not create, sync, or rebuild `.agent-flow/memory.db`. If the index is stale, run `agent-flow memory rebuild` to recreate only the generated index.
+
+You normally do not manage SQLite directly:
+
+- `agent-flow memory search` is raw JSONL search.
+- `agent-flow memory query` is indexed structured project memory query.
+- `agent-flow context` is the project-aware context pack for coding agents.
+
+Use `agent-flow memory inspect` to see index health and counts. Use `agent-flow memory rebuild` to recreate only the generated index. Rebuild never modifies `.memory/*.jsonl`.
 
 ## Context Packs
 
@@ -193,7 +218,7 @@ Context packs reduce token waste by turning local planning files, structured mem
 agent-flow context "fix billing webhook"
 ```
 
-The command reads `.planning/STATE.md`, project planning notes, structured JSONL memory, and detected package scripts. It scores entries locally with deterministic keyword matching, exact phrase boosts, module preference, memory type priority, status, and recency. It does not use embeddings, semantic search, SQLite, MCP, or external services.
+The command reads `.planning/STATE.md`, project planning notes, indexed structured memory, and detected package scripts. It scores entries locally with deterministic keyword matching, exact phrase boosts, module preference, memory type priority, status, and recency. It does not use embeddings, semantic search, MCP, or external services.
 
 Example output:
 
@@ -241,7 +266,8 @@ Use `agent-flow context "<task>"` before `$flow-quick`, before `$flow-plan`, and
 Related commands:
 
 - `agent-flow memory search` is for raw local JSONL lookup.
-- `agent-flow memory context` is a memory-only context helper.
+- `agent-flow memory query` is for indexed structured memory lookup.
+- `agent-flow memory context` is a backward-compatible memory-only context helper.
 - `agent-flow context` is the main project-aware context pack for agent work.
 
 ### Memory validation and migration notes
@@ -273,6 +299,9 @@ Current MVP:
 - `agent-flow context <task>`
 - `agent-flow memory list`
 - `agent-flow memory search <query>`
+- `agent-flow memory query <query>`
+- `agent-flow memory inspect`
+- `agent-flow memory rebuild`
 - `agent-flow memory context <query>`
 - `agent-flow memory validate`
 - `agent-flow memory append`
@@ -288,7 +317,7 @@ Near-term roadmap:
 ## Limitations
 
 - `agent-flow onboard` creates baseline memory, but Codex may still need `$flow-onboard` for deeper project judgment.
-- Memory is file-based and keyword-searchable; there is no semantic search yet.
+- Memory uses JSONL as source plus an internal SQLite query index; there is no semantic search yet.
 - Monorepos are not deeply understood yet.
 - Detection is intentionally simple.
-- No MCP, embeddings, dashboards, databases, SQLite, or Claude adapter are included in this MVP.
+- No MCP, embeddings, dashboards, user-managed databases, or Claude adapter are included in this MVP.

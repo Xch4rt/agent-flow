@@ -20,6 +20,7 @@ describe('Codex skill templates', () => {
     expect(skill).toContain('This project has not been onboarded yet. Run `agent-flow onboard` first.');
     expect(skill).toContain('offer a lightweight resume from existing files only');
     expect(skill).toContain('agent-flow context "current task or module"');
+    expect(skill).toContain('uses the internal indexed memory when available');
     expect(skill).toContain('Avoid reading all memory when a context pack has enough relevant state.');
     expect(skill).toContain('agent-flow memory context');
     expect(skill).not.toContain('after `$flow-onboard` has been run');
@@ -36,7 +37,7 @@ describe('Codex skill templates', () => {
     const skill = flowCloseSkill();
 
     expect(skill).toContain('agent-flow context "<task>"');
-    expect(skill).toContain('concise and non-duplicated');
+    expect(skill).toContain('indexed `agent-flow context "<task>"` packs');
     expect(skill).toContain('agent-flow memory append');
     expect(skill).toContain('createdAt');
     expect(skill).toContain('Record decisions only when a real durable choice was made.');

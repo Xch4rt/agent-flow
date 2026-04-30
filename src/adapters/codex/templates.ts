@@ -87,7 +87,7 @@ This project has not been onboarded yet. Run \`agent-flow onboard\` first.
 
 Then mention \`$flow-onboard\` can add agent-assisted context after deterministic onboarding, and offer a lightweight resume from existing files only. Do not pretend durable project memory exists.
 
-For a specific task, prefer the project-aware context pack before reading raw memory:
+For a specific task, prefer the project-aware context pack before reading raw memory. It uses the internal indexed memory when available:
 
 \`\`\`sh
 agent-flow context "current task or module"
@@ -142,7 +142,7 @@ Use when the task is narrow, local, and can be completed in one pass.
 Workflow:
 
 1. Restate the exact target behavior in one sentence.
-2. Before a non-trivial change, run or recommend \`agent-flow context "<task>"\` for focused project context.
+2. Before a non-trivial change, run or recommend \`agent-flow context "<task>"\` for focused indexed project context.
 3. Read \`.planning/STATE.md\`, \`AGENTS.md\`, and only the code paths needed.
 4. Check \`git status --short\` and avoid unrelated dirty files.
 5. Make the smallest coherent diff. Prefer existing patterns over new abstractions.
@@ -244,7 +244,7 @@ export function flowCloseSkill(): string {
 
 Use at the end of meaningful work. The goal is continuity, not a diary.
 
-Useful durable memory improves future \`agent-flow context "<task>"\` packs. Keep it concise and non-duplicated.
+Useful durable memory improves future indexed \`agent-flow context "<task>"\` packs. Keep it concise and non-duplicated.
 
 Update:
 

@@ -53,6 +53,9 @@ describe('status command', () => {
     expect(output).toContain('Missing Codex skills: 0');
     expect(output).toContain('Invalid memory entries: 0');
     expect(output).toContain('Context pack memory: limited');
+    expect(output).toContain('Memory index DB: no');
+    expect(output).toContain('Memory index in sync: no');
+    expect(output).toContain('Indexed entries: 0');
     expect(output).toContain('Onboarded: no');
     expect(output).toContain('.memory/modules.jsonl: 1 entries');
     expect(output).toContain('Planning state modified:');
