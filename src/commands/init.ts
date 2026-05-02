@@ -12,6 +12,7 @@ import {
   roadmapTemplate,
   stateTemplate,
 } from '../core/templates.js';
+import { printFirstRunAgent, section, statusLabel } from '../core/terminal-ui.js';
 import { installCodex } from '../adapters/codex/install-codex.js';
 
 export type InitOptions = {
@@ -53,9 +54,7 @@ function printResults(root: string, results: WriteResult[]): void {
   for (const status of ['created', 'overwritten', 'skipped'] as const) {
     for (const result of grouped[status]) {
       const relativePath = path.relative(root, result.path);
-      const label =
-        status === 'created' ? pc.green('created') : status === 'overwritten' ? pc.yellow('overwritten') : pc.dim('skipped');
-      console.log(`${label} ${relativePath}`);
+      console.log(`${statusLabel(status)} ${relativePath}`);
     }
   }
 }
@@ -75,6 +74,11 @@ export async function runInit(options: InitOptions): Promise<void> {
 
   if (options.codex) {
     results.push(...(await installCodex(root, detection, { force: options.force })));
+  }
+
+  if (results.some((result) => result.status === 'created' && path.relative(root, result.path) === '.agent-flow/config.json')) {
+    printFirstRunAgent();
+    console.log(section('Initialized agent-flow'));
   }
 
   printResults(root, results);

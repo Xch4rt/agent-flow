@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.5.3
+
+Dashboard CLI.
+
+- Added an interactive blessed-powered dashboard when running `agent-flow` without a subcommand.
+- Added Bolt and Luna terminal mascots for execution and memory modes.
+- Added dashboard panels for project state, menu navigation, execution mode, memory mode, and system guidance.
+- Added non-interactive terminal fallback output for CI and piped environments.
+- Kept existing public commands and memory behavior unchanged.
+
 ## v0.5.0
 
 Internal SQLite memory index.

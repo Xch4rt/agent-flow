@@ -1,5 +1,6 @@
 import pc from 'picocolors';
 import { onboardRepository } from '../core/onboard.js';
+import { brandTitle, keyValue, statusLabel } from '../core/terminal-ui.js';
 
 export type OnboardOptions = {
   cwd?: string;
@@ -12,14 +13,14 @@ export async function runOnboard(options: OnboardOptions = {}): Promise<void> {
   const root = options.cwd ?? process.cwd();
   const result = await onboardRepository(root, options);
 
-  console.log(pc.bold(options.dryRun ? 'agent-flow onboard dry run' : 'agent-flow onboard'));
-  console.log(`Package manager: ${result.inspection.detection.packageManager}`);
+  console.log(brandTitle(options.dryRun ? 'agent-flow onboard dry run' : 'agent-flow onboard'));
+  console.log(keyValue('Package manager:', result.inspection.detection.packageManager));
   console.log(
-    `Detected stack: ${result.inspection.detection.stacks.length ? result.inspection.detection.stacks.join(', ') : 'none'}`,
+    keyValue('Detected stack:', result.inspection.detection.stacks.length ? result.inspection.detection.stacks.join(', ') : 'none'),
   );
-  console.log(`Important files: ${result.inspection.importantFiles.length}`);
-  console.log(`Important directories: ${result.inspection.importantDirectories.length}`);
-  console.log(`Risks: ${result.inspection.risks.length}`);
+  console.log(keyValue('Important files:', String(result.inspection.importantFiles.length)));
+  console.log(keyValue('Important directories:', String(result.inspection.importantDirectories.length)));
+  console.log(keyValue('Risks:', String(result.inspection.risks.length)));
 
   for (const item of result.planning) {
     const status = item.changed ? (options.dryRun ? 'would update' : 'updated') : 'unchanged';
@@ -33,7 +34,7 @@ export async function runOnboard(options: OnboardOptions = {}): Promise<void> {
 
   if (result.memoryAppended.length > 0) {
     for (const file of result.memoryAppended) {
-      console.log(`${pc.green('appended')} ${file}`);
+      console.log(`${statusLabel('appended')} ${file}`);
     }
   } else if (result.skippedMemory) {
     console.log(pc.dim('skipped memory append; onboarding event already exists. Use --refresh to append a new event.'));

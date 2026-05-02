@@ -19,6 +19,8 @@ import {
 } from './commands/memory.js';
 import { runOnboard } from './commands/onboard.js';
 import { runStatus } from './commands/status.js';
+import { brandTitle } from './core/terminal-ui.js';
+import { runDashboard } from './dashboard/dashboard.js';
 
 function readPackageVersion(): string {
   const packageJsonPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
@@ -33,7 +35,8 @@ export function createProgram(): Command {
   program
     .name('agent-flow')
     .description('Codex-first workflow and memory layer for software project continuity.')
-    .version(readPackageVersion());
+    .version(readPackageVersion())
+    .addHelpText('beforeAll', () => `${brandTitle('agent-flow')}\n`);
 
   program
     .command('init')
@@ -210,7 +213,11 @@ export function isCliEntrypoint(metaUrl: string, argvPath = process.argv[1]): bo
 
 if (isCliEntrypoint(import.meta.url)) {
   try {
-    await createProgram().parseAsync(process.argv);
+    if (process.argv.length <= 2) {
+      await runDashboard();
+    } else {
+      await createProgram().parseAsync(process.argv);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(pc.red(message));

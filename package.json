@@ -1,10 +1,11 @@
 {
-  "name": "agent-flow",
-  "version": "0.5.2",
+  "name": "@xch4rt/agent-flow",
+  "version": "0.5.3",
+  "author": "Xch4rt <pab203.dev@gmail.com>",
   "description": "Codex-first workflow and memory layer for software project continuity.",
   "type": "module",
   "bin": {
-    "agent-flow": "./dist/cli.js"
+    "agent-flow": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -37,6 +38,8 @@
   "license": "MIT",
   "dependencies": {
     "better-sqlite3": "^12.9.0",
+    "blessed": "^0.1.81",
+    "chalk": "^5.6.2",
     "commander": "^12.1.0",
     "execa": "^9.6.0",
     "fs-extra": "^11.3.0",
@@ -45,6 +48,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "@types/blessed": "^0.1.25",
     "@types/fs-extra": "^11.0.4",
     "@types/node": "^22.13.14",
     "tsx": "^4.20.5",

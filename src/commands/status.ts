@@ -1,10 +1,10 @@
 import path from 'node:path';
 import fs from 'fs-extra';
-import pc from 'picocolors';
 import { detectProject } from '../core/detect-project.js';
 import { getInvalidMemoryEntries, getMemoryFiles, readMemoryEntries } from '../core/jsonl-memory.js';
 import { getMemoryIndexState, inspectMemoryIndex } from '../core/memory-index.js';
 import { getOnboardingState } from '../core/onboard.js';
+import { brandTitle, keyValue, section, statusLabel } from '../core/terminal-ui.js';
 import { codexSkillFiles, planningFiles } from './doctor.js';
 
 const coreFiles = [
@@ -23,7 +23,7 @@ async function modifiedAt(filePath: string): Promise<string> {
 }
 
 function commandLine(label: string, value: string | undefined): string {
-  return `  ${label}: ${value ?? 'not detected'}`;
+  return keyValue(`  ${label}:`, value ?? 'not detected');
 }
 
 export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
@@ -65,10 +65,10 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
   const memoryIndexState = await getMemoryIndexState(root);
   const memoryIndexInspect = memoryIndexState.exists ? await inspectMemoryIndex(root) : undefined;
 
-  console.log(pc.bold('agent-flow status'));
-  console.log(`Package manager: ${detection.packageManager}`);
-  console.log(`Detected stack: ${detection.stacks.length ? detection.stacks.join(', ') : 'none'}`);
-  console.log('Detected commands:');
+  console.log(brandTitle('agent-flow status'));
+  console.log(keyValue('Package manager:', detection.packageManager));
+  console.log(keyValue('Detected stack:', detection.stacks.length ? detection.stacks.join(', ') : 'none'));
+  console.log(section('Detected commands:'));
   console.log(commandLine('install', detection.commands.install));
   console.log(commandLine('dev', detection.commands.dev));
   console.log(commandLine('build', detection.commands.build));
@@ -76,22 +76,23 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
   console.log(commandLine('lint', detection.commands.lint));
   console.log(commandLine('typecheck', detection.commands.typecheck));
 
-  console.log(`Missing core files: ${missingCore.length}`);
-  console.log(`Missing planning files: ${missingPlanning.length}`);
-  console.log(`Missing memory files: ${missingMemory.length}`);
-  console.log(`Invalid memory entries: ${invalidMemoryEntries.length}`);
-  console.log(`Context pack memory: ${memoryEntries.length >= 3 ? 'enough for useful packs' : 'limited'}`);
-  console.log(`Memory index DB: ${memoryIndexState.exists ? 'yes' : 'no'}`);
-  console.log(`Memory index state: ${memoryIndexState.status}`);
-  console.log(`Memory index in sync: ${memoryIndexState.status === 'in sync' ? 'yes' : 'no'}`);
-  console.log(`Memory index last sync: ${memoryIndexState.lastSyncAt ?? 'never'}`);
-  console.log(`Indexed entries: ${memoryIndexInspect ? Object.values(memoryIndexInspect.entryCounts).reduce((sum, count) => sum + count, 0) : 0}`);
-  console.log(`Missing Codex skills: ${missingSkills.length}`);
-  console.log(`Onboarded: ${onboarding.onboarded ? 'yes' : 'no'}`);
-  console.log(`Last onboarded: ${onboarding.lastOnboardedAt ?? 'never'}`);
+  console.log(section('Project health:'));
+  console.log(keyValue('Missing core files:', String(missingCore.length)));
+  console.log(keyValue('Missing planning files:', String(missingPlanning.length)));
+  console.log(keyValue('Missing memory files:', String(missingMemory.length)));
+  console.log(keyValue('Invalid memory entries:', String(invalidMemoryEntries.length)));
+  console.log(keyValue('Context pack memory:', memoryEntries.length >= 3 ? 'enough for useful packs' : 'limited'));
+  console.log(keyValue('Memory index DB:', memoryIndexState.exists ? 'yes' : 'no'));
+  console.log(keyValue('Memory index state:', memoryIndexState.status));
+  console.log(keyValue('Memory index in sync:', memoryIndexState.status === 'in sync' ? 'yes' : 'no'));
+  console.log(keyValue('Memory index last sync:', memoryIndexState.lastSyncAt ?? 'never'));
+  console.log(keyValue('Indexed entries:', String(memoryIndexInspect ? Object.values(memoryIndexInspect.entryCounts).reduce((sum, count) => sum + count, 0) : 0)));
+  console.log(keyValue('Missing Codex skills:', String(missingSkills.length)));
+  console.log(keyValue('Onboarded:', onboarding.onboarded ? 'yes' : 'no'));
+  console.log(keyValue('Last onboarded:', onboarding.lastOnboardedAt ?? 'never'));
 
-  console.log(`Planning state modified: ${await modifiedAt(statePath)}`);
-  console.log('Memory files:');
+  console.log(keyValue('Planning state modified:', await modifiedAt(statePath)));
+  console.log(section('Memory files:'));
 
   for (const file of memoryFiles) {
     const relativePath = path.relative(root, file);
@@ -110,11 +111,11 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
   ].filter((warning): warning is string => Boolean(warning));
 
   if (warnings.length > 0) {
-    console.log(pc.yellow('Warnings:'));
+    console.log(section('Warnings:'));
     for (const warning of warnings) {
-      console.log(`${pc.yellow('warning')} ${warning}`);
+      console.log(`${statusLabel('warning')} ${warning}`);
     }
   } else {
-    console.log(`${pc.green('ok')} no obvious warnings`);
+    console.log(`${statusLabel('ok')} no obvious warnings`);
   }
 }

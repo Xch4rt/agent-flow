@@ -6,6 +6,7 @@ import { detectProject } from '../core/detect-project.js';
 import { formatInvalidMemoryEntry, getInvalidMemoryEntries, getMemoryFiles, readMemoryEntries } from '../core/jsonl-memory.js';
 import { getMemoryIndexState, queryMemoryIndex, validateMemoryIndexSchema } from '../core/memory-index.js';
 import { getOnboardingState } from '../core/onboard.js';
+import { brandTitle, section, statusLabel } from '../core/terminal-ui.js';
 
 export const planningFiles = [
   '.planning/PROJECT.md',
@@ -143,15 +144,15 @@ export async function runDoctor(options: { cwd?: string } = {}): Promise<void> {
     });
   }
 
-  console.log(pc.bold('agent-flow doctor'));
+  console.log(brandTitle('agent-flow doctor'));
 
   for (const check of checks) {
-    console.log(`${check.ok ? pc.green('ok') : pc.red('fail')} ${check.label}${check.detail ? ` - ${check.detail}` : ''}`);
+    console.log(`${check.ok ? statusLabel('ok') : statusLabel('fail')} ${check.label}${check.detail ? pc.dim(` - ${check.detail}`) : ''}`);
   }
 
   if (invalidMemoryEntries.length > 0) {
     const shown = invalidMemoryEntries.slice(0, 3);
-    console.log(pc.yellow('Memory validation details:'));
+    console.log(section('Memory validation details:'));
     for (const entry of shown) {
       for (const line of formatInvalidMemoryEntry(entry)) {
         console.log(line);
