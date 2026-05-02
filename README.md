@@ -25,22 +25,30 @@ Agent Flow turns that repeated explanation into repo-local planning files, memor
 
 ## Quick Start
 
-Install from GitHub:
+Run without adding it to your project:
 
 ```sh
-npm install -g github:Xch4rt/agent-flow
+npx @xch4rt/agent-flow
+npx @xch4rt/agent-flow init --codex
+npx @xch4rt/agent-flow onboard
 ```
 
-Or with pnpm:
+Or install the CLI globally:
 
 ```sh
-pnpm add -g github:Xch4rt/agent-flow
+npm install -g @xch4rt/agent-flow
 ```
 
 Check the CLI:
 
 ```sh
 agent-flow --help
+```
+
+Run the dashboard:
+
+```sh
+agent-flow
 ```
 
 For local development:
@@ -103,6 +111,18 @@ agent-flow memory search "auth"
 agent-flow memory context "auth"
 agent-flow context "fix billing webhook"
 ```
+
+## Dashboard
+
+Running `agent-flow` without a subcommand opens the terminal dashboard. It shows the current project, branch, memory status, execution mode, memory mode, and the main workflow menu.
+
+The dashboard is interactive in a real terminal:
+
+- Use arrow keys or `j`/`k` to move.
+- Press `enter` to select.
+- Press `q`, `esc`, or `ctrl-c` to exit.
+
+In non-interactive environments such as CI, pipes, or captured command output, Agent Flow prints a compact fallback view instead of taking over the terminal.
 
 ## Commands
 
@@ -292,6 +312,7 @@ For `agent-flow onboard`, `--force` replaces generated onboarding sections only.
 
 Current MVP:
 
+- Interactive terminal dashboard with non-interactive fallback
 - `agent-flow init --codex`
 - `agent-flow onboard`
 - `agent-flow status`
@@ -320,4 +341,4 @@ Near-term roadmap:
 - Memory uses JSONL as source plus an internal SQLite query index; there is no semantic search yet.
 - Monorepos are not deeply understood yet.
 - Detection is intentionally simple.
-- No MCP, embeddings, dashboards, user-managed databases, or Claude adapter are included in this MVP.
+- No MCP, embeddings, user-managed databases, or Claude adapter are included in this MVP.
