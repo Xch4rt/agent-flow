@@ -59,7 +59,7 @@ export function projectTemplate(detection: ProjectDetection): string {
 
 Never explain your repo twice.
 
-This project uses agent-flow to preserve project context for Codex-first AI coding sessions.
+This project uses agent-flow to preserve project context for AI coding sessions.
 
 ## Detected Stack
 
@@ -85,9 +85,7 @@ export function requirementsTemplate(): string {
 
 - No MCP server in the MVP.
 - No embeddings in the MVP.
-- No dashboard in the MVP.
 - No user-managed database in the MVP.
-- No Claude support in the MVP.
 `;
 }
 
@@ -143,16 +141,20 @@ export function openQuestionsTemplate(): string {
 `;
 }
 
-export function configTemplate(detection: ProjectDetection): string {
+export function configTemplate(detection: ProjectDetection, adapterIds: string[] = []): string {
+  const adapters: Record<string, boolean> = { codex: false, claude: false };
+  for (const id of adapterIds) {
+    adapters[id] = true;
+  }
+
   return `${JSON.stringify(
     {
       schemaVersion: 1,
-      agent: 'codex',
       packageManager: detection.packageManager,
       detectedStack: detection.stacks,
       planningDir: '.planning',
       memoryDir: '.memory',
-      skillsDir: '.codex/skills',
+      adapters,
     },
     null,
     2,

@@ -50,7 +50,7 @@ describe('status command', () => {
     expect(output).toContain('Detected stack: Next.js');
     expect(output).toContain('Detected commands:');
     expect(output).toContain('dev: pnpm dev');
-    expect(output).toContain('Missing Codex skills: 0');
+    expect(output).toContain('Missing adapter files: 0');
     expect(output).toContain('Invalid memory entries: 0');
     expect(output).toContain('Context pack memory: limited');
     expect(output).toContain('Memory index DB: no');

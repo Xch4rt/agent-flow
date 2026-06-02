@@ -4,6 +4,7 @@ import path from 'node:path';
 import { Command } from 'commander';
 import pc from 'picocolors';
 import { fileURLToPath } from 'node:url';
+import { runClose } from './commands/close.js';
 import { runContext } from './commands/context.js';
 import { runDoctor } from './commands/doctor.js';
 import { runInit } from './commands/init.js';
@@ -18,6 +19,7 @@ import {
   runMemoryValidate,
 } from './commands/memory.js';
 import { runOnboard } from './commands/onboard.js';
+import { runStart } from './commands/start.js';
 import { runStatus } from './commands/status.js';
 import { brandTitle } from './core/terminal-ui.js';
 import { runDashboard } from './dashboard/dashboard.js';
@@ -34,17 +36,19 @@ export function createProgram(): Command {
 
   program
     .name('agent-flow')
-    .description('Codex-first workflow and memory layer for software project continuity.')
+    .description('Local workflow and memory layer for AI coding agents.')
     .version(readPackageVersion())
     .addHelpText('beforeAll', () => `${brandTitle('agent-flow')}\n`);
 
   program
     .command('init')
-    .description('Initialize agent-flow planning, memory, and optional Codex skill files.')
+    .description('Initialize agent-flow planning, memory, and optional agent skill files.')
     .option('--codex', 'Install Codex skill workflows')
+    .option('--claude', 'Install Claude Code skill workflows and CLAUDE.md')
+    .option('--agent <agent>', 'Install agent adapter: codex, claude, or all')
     .option('--force', 'Overwrite existing generated files')
     .option('--force-memory', 'Overwrite existing memory JSONL files')
-    .action(async (options: { codex?: boolean; force?: boolean; forceMemory?: boolean }) => {
+    .action(async (options: { codex?: boolean; claude?: boolean; agent?: string; force?: boolean; forceMemory?: boolean }) => {
       await runInit(options);
     });
 
@@ -82,17 +86,58 @@ export function createProgram(): Command {
     .option('--json', 'Print structured JSON')
     .option('--include-events', 'Include recent relevant events (default-on compatibility flag)')
     .option('--include-open-questions', 'Include relevant open questions (default-on compatibility flag)')
+    .option('--stats', 'Print estimated token savings')
     .option('--no-color', 'Disable colored output')
     .action(async (task: string, options: {
       module?: string;
       limit?: string;
       budgetLines?: string;
       json?: boolean;
+      stats?: boolean;
       includeEvents?: boolean;
       includeOpenQuestions?: boolean;
       noColor?: boolean;
     }) => {
       await runContext(task, options);
+    });
+
+  program
+    .command('start')
+    .argument('<task>', 'Task to start working on')
+    .description('Start a focused task with context pack and next-action guidance.')
+    .option('--module <module>', 'Prefer memory and questions for one module or area')
+    .option('--limit <number>', 'Maximum relevant items per section')
+    .option('--budget-lines <number>', 'Approximate maximum output lines')
+    .option('--json', 'Print structured JSON')
+    .option('--stats', 'Print estimated token savings')
+    .action(async (task: string, options: {
+      module?: string;
+      limit?: string;
+      budgetLines?: string;
+      json?: boolean;
+      stats?: boolean;
+    }) => {
+      await runStart(task, options);
+    });
+
+  program
+    .command('close')
+    .description('Save session memory interactively or with flags.')
+    .option('--change <summary>', 'What changed in this session')
+    .option('--decision <summary>', 'Decision made')
+    .option('--error <summary>', 'Error solved')
+    .option('--next <summary>', 'What the next session should know')
+    .option('--module <module>', 'Related module or area')
+    .option('--allow-duplicate', 'Allow duplicate entries')
+    .action(async (options: {
+      change?: string;
+      decision?: string;
+      error?: string;
+      next?: string;
+      module?: string;
+      allowDuplicate?: boolean;
+    }) => {
+      await runClose(options);
     });
 
   const memory = program.command('memory').description('Inspect local JSONL memory.');
@@ -211,10 +256,64 @@ export function isCliEntrypoint(metaUrl: string, argvPath = process.argv[1]): bo
   }
 }
 
+async function runFirstRunOrDashboard(): Promise<void> {
+  const root = process.cwd();
+  const configExists = fs.existsSync(path.join(root, '.agent-flow', 'config.json'));
+
+  if (configExists) {
+    await runDashboard();
+    return;
+  }
+
+  console.log(brandTitle('agent-flow'));
+  console.log('');
+  console.log(pc.yellow('This repo is not configured for Agent Flow.'));
+  console.log('');
+  console.log('Recommended setup:');
+  console.log(`  1. ${pc.cyan('agent-flow init --codex')}  or  ${pc.cyan('agent-flow init --claude')}`);
+  console.log(`  2. ${pc.cyan('agent-flow onboard')}`);
+  console.log(`  3. ${pc.cyan('agent-flow doctor')}`);
+
+  const isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY && !process.env.CI);
+  if (!isTTY) return;
+
+  console.log('');
+  const readline = await import('node:readline/promises');
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  let agentChoice: string;
+  try {
+    const answer = await rl.question(`${pc.cyan('?')} Run setup now? (y/N) `);
+    if (answer.trim().toLowerCase() !== 'y') return;
+
+    console.log('');
+    console.log('Which agent setup do you want?');
+    console.log(`  1. ${pc.cyan('Codex')}`);
+    console.log(`  2. ${pc.cyan('Claude')}`);
+    console.log(`  3. ${pc.cyan('Both')}`);
+    console.log(`  4. ${pc.dim('Base files only')}`);
+    console.log('');
+    agentChoice = (await rl.question(`${pc.cyan('?')} Choice (1-4): `)).trim();
+  } finally {
+    rl.close();
+  }
+
+  const initOptions: { codex?: boolean; claude?: boolean; cwd: string } = { cwd: root };
+  if (agentChoice === '1') initOptions.codex = true;
+  else if (agentChoice === '2') initOptions.claude = true;
+  else if (agentChoice === '3') { initOptions.codex = true; initOptions.claude = true; }
+
+  console.log('');
+  await runInit(initOptions);
+  console.log('');
+  await runOnboard({ cwd: root });
+  console.log('');
+  await runDoctor({ cwd: root });
+}
+
 if (isCliEntrypoint(import.meta.url)) {
   try {
     if (process.argv.length <= 2) {
-      await runDashboard();
+      await runFirstRunOrDashboard();
     } else {
       await createProgram().parseAsync(process.argv);
     }

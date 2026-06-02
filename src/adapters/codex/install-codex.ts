@@ -1,6 +1,7 @@
 import path from 'node:path';
 import type { ProjectDetection } from '../../core/detect-project.js';
 import { writeFileSafe, type WriteResult } from '../../core/write-file-safe.js';
+import type { AgentAdapter } from '../types.js';
 import {
   flowCloseSkill,
   flowOnboardSkill,
@@ -9,6 +10,15 @@ import {
   flowResumeSkill,
   flowVerifySkill,
 } from './templates.js';
+
+const skillNames = [
+  'flow-onboard',
+  'flow-resume',
+  'flow-quick',
+  'flow-plan',
+  'flow-verify',
+  'flow-close',
+];
 
 export function codexSkillFiles(root: string, detection: ProjectDetection): Array<{ path: string; content: string }> {
   return [
@@ -37,3 +47,14 @@ export async function installCodex(
 
   return results;
 }
+
+export function codexExpectedFiles(root: string): string[] {
+  return skillNames.map((name) => path.join(root, '.codex', 'skills', name, 'SKILL.md'));
+}
+
+export const codexAdapter: AgentAdapter = {
+  id: 'codex',
+  label: 'Codex',
+  install: installCodex,
+  expectedFiles: codexExpectedFiles,
+};

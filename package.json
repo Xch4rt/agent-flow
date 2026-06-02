@@ -1,8 +1,8 @@
 {
   "name": "@xch4rt/agent-flow",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "author": "Xch4rt <pab203.dev@gmail.com>",
-  "description": "Codex-first workflow and memory layer for software project continuity.",
+  "description": "Local workflow and memory layer for AI coding agents.",
   "type": "module",
   "bin": {
     "agent-flow": "dist/cli.js"

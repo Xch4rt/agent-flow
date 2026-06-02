@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { flowCloseSkill, flowOnboardSkill, flowPlanSkill, flowQuickSkill, flowResumeSkill } from '../src/adapters/codex/templates.js';
+import { flowCloseSkill, flowOnboardSkill, flowPlanSkill, flowQuickSkill, flowResumeSkill, flowVerifySkill } from '../src/adapters/codex/templates.js';
 import type { ProjectDetection } from '../src/core/detect-project.js';
 
 const detection: ProjectDetection = {
@@ -31,6 +31,8 @@ describe('Codex skill templates', () => {
 
     expect(skill).toContain('agent-flow onboard');
     expect(skill).toContain('deterministic onboarding');
+    expect(skill).toContain('Recommended next commands');
+    expect(skill).toContain('agent-flow doctor');
   });
 
   it('flow-close uses createdAt and prefers the memory append CLI', () => {
@@ -43,11 +45,29 @@ describe('Codex skill templates', () => {
     expect(skill).toContain('Record decisions only when a real durable choice was made.');
     expect(skill).toContain('Record errors only when both cause and solution are known.');
     expect(skill).toContain('Do not duplicate every final response or append exact duplicates.');
+    expect(skill).toContain('Recommended next commands');
+    expect(skill).toContain('git status --short');
     expect(skill).not.toContain('"timestamp"');
   });
 
-  it('flow-quick and flow-plan mention task context packs', () => {
+  it('all workflow skills end with recommended next commands', () => {
+    for (const skill of [
+      flowOnboardSkill(detection),
+      flowResumeSkill(detection),
+      flowQuickSkill(detection),
+      flowPlanSkill(),
+      flowVerifySkill(detection),
+      flowCloseSkill(),
+    ]) {
+      expect(skill).toContain('Recommended next commands');
+    }
+  });
+
+  it('flow-quick, flow-plan, and flow-verify mention task context and next steps', () => {
     expect(flowQuickSkill(detection)).toContain('agent-flow context "<task>"');
     expect(flowPlanSkill()).toContain('agent-flow context "<feature or task>"');
+    expect(flowPlanSkill()).toContain('Recommended next commands');
+    expect(flowPlanSkill()).toContain('$flow-verify');
+    expect(flowPlanSkill()).toContain('$flow-close');
   });
 });

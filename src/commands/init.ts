@@ -13,10 +13,12 @@ import {
   stateTemplate,
 } from '../core/templates.js';
 import { printFirstRunAgent, section, statusLabel } from '../core/terminal-ui.js';
-import { installCodex } from '../adapters/codex/install-codex.js';
+import { getAdapter, type AgentId } from '../adapters/registry.js';
 
 export type InitOptions = {
   codex?: boolean;
+  claude?: boolean;
+  agent?: string;
   force?: boolean;
   forceMemory?: boolean;
   cwd?: string;
@@ -25,7 +27,7 @@ export type InitOptions = {
 function baseFiles(root: string, detection: Awaited<ReturnType<typeof detectProject>>): Array<{ path: string; content: string }> {
   return [
     { path: path.join(root, 'AGENTS.md'), content: agentsTemplate(detection) },
-    { path: path.join(root, '.agent-flow', 'config.json'), content: configTemplate(detection) },
+    { path: path.join(root, '.agent-flow', 'config.json'), content: configTemplate(detection, []) },
     { path: path.join(root, '.planning', 'PROJECT.md'), content: projectTemplate(detection) },
     { path: path.join(root, '.planning', 'REQUIREMENTS.md'), content: requirementsTemplate() },
     { path: path.join(root, '.planning', 'ROADMAP.md'), content: roadmapTemplate() },
@@ -59,12 +61,42 @@ function printResults(root: string, results: WriteResult[]): void {
   }
 }
 
+export function resolveAdapters(options: InitOptions): AgentId[] {
+  const ids: AgentId[] = [];
+
+  if (options.agent) {
+    const value = options.agent.toLowerCase();
+    if (value === 'all') {
+      ids.push('codex', 'claude');
+    } else if (value === 'codex' || value === 'claude') {
+      ids.push(value);
+    } else {
+      throw new Error(`Unknown agent: ${options.agent}. Allowed values: codex, claude, all`);
+    }
+  }
+
+  if (options.codex && !ids.includes('codex')) ids.push('codex');
+  if (options.claude && !ids.includes('claude')) ids.push('claude');
+
+  return ids;
+}
+
 export async function runInit(options: InitOptions): Promise<void> {
   const root = options.cwd ?? process.cwd();
   const detection = await detectProject(root);
+  const adapterIds = resolveAdapters(options);
   const results: WriteResult[] = [];
 
-  for (const file of baseFiles(root, detection)) {
+  const base = baseFiles(root, detection);
+  const configIndex = base.findIndex((f) => f.path.endsWith('config.json'));
+  if (configIndex >= 0) {
+    base[configIndex] = {
+      path: base[configIndex].path,
+      content: configTemplate(detection, adapterIds),
+    };
+  }
+
+  for (const file of base) {
     results.push(await writeFileSafe(file.path, file.content, { force: options.force }));
   }
 
@@ -72,8 +104,9 @@ export async function runInit(options: InitOptions): Promise<void> {
     results.push(await writeFileSafe(file.path, file.content, { force: options.forceMemory }));
   }
 
-  if (options.codex) {
-    results.push(...(await installCodex(root, detection, { force: options.force })));
+  for (const id of adapterIds) {
+    const adapter = getAdapter(id);
+    results.push(...(await adapter.install(root, detection, { force: options.force })));
   }
 
   if (results.some((result) => result.status === 'created' && path.relative(root, result.path) === '.agent-flow/config.json')) {

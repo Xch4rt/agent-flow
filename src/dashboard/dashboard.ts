@@ -1,4 +1,6 @@
+import readline from 'node:readline/promises';
 import blessed from 'blessed';
+import pc from 'picocolors';
 import { createExecutionPanel } from './components/ExecutionPanel.js';
 import { createFooter } from './components/Footer.js';
 import { createHeader } from './components/Header.js';
@@ -34,6 +36,91 @@ function selectedMessage(label: string): string {
       return 'Exit selected. Press enter again or q to leave.';
     default:
       return 'Stay in flow. We handle the rest.';
+  }
+}
+
+async function promptInput(question: string): Promise<string> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await rl.question(`${pc.cyan('?')} ${question} `);
+    return answer.trim();
+  } finally {
+    rl.close();
+  }
+}
+
+async function executeAction(label: string): Promise<void> {
+  const { runDoctor } = await import('../commands/doctor.js');
+  const { runStart } = await import('../commands/start.js');
+  const { runContext } = await import('../commands/context.js');
+  const { searchMemory } = await import('../core/jsonl-memory.js');
+
+  switch (label) {
+    case 'Run doctor': {
+      await runDoctor();
+      break;
+    }
+    case 'Create context pack': {
+      const task = await promptInput('Task for context pack:');
+      if (!task) {
+        console.log(pc.dim('No task provided.'));
+        break;
+      }
+      await runContext(task, {});
+      break;
+    }
+    case 'Start focused task': {
+      const task = await promptInput('What are you working on?');
+      if (!task) {
+        console.log(pc.dim('No task provided.'));
+        break;
+      }
+      await runStart(task, {});
+      break;
+    }
+    case 'Search memory': {
+      const query = await promptInput('Search query:');
+      if (!query) {
+        console.log(pc.dim('No query provided.'));
+        break;
+      }
+      const results = await searchMemory(process.cwd(), query, { limit: 10 });
+      if (results.length === 0) {
+        console.log(pc.dim('No memory entries matched.'));
+      } else {
+        for (const entry of results) {
+          console.log(`${pc.dim(`${entry.file}:${entry.line}`)} ${entry.raw.slice(0, 120)}`);
+        }
+      }
+      break;
+    }
+    case 'Continue last flow': {
+      const entries = await (async () => {
+        const { readMemoryEntries } = await import('../core/jsonl-memory.js');
+        return readMemoryEntries(process.cwd());
+      })();
+      const handoffs = entries.filter((e) => {
+        if (typeof e.value !== 'object' || e.value === null) return false;
+        return (e.value as Record<string, unknown>).type === 'handoff';
+      });
+      if (handoffs.length === 0) {
+        console.log(pc.dim('No previous flow handoff found. Start a new task with: agent-flow start "<task>"'));
+      } else {
+        const last = handoffs[handoffs.length - 1];
+        const value = last.value as Record<string, unknown>;
+        console.log(pc.bold('Last handoff:'));
+        console.log(`  ${value.summary ?? last.raw}`);
+        console.log('');
+        console.log(`Resume with: ${pc.cyan('agent-flow start "<your task>"')}`);
+      }
+      break;
+    }
+    case 'Settings': {
+      console.log(pc.dim('Settings are not implemented yet.'));
+      break;
+    }
+    default:
+      break;
   }
 }
 
@@ -102,6 +189,8 @@ export async function runDashboard(): Promise<void> {
 
   createLayout(screen, state);
 
+  let pendingAction: string | undefined;
+
   function updateSelection(nextIndex: number): void {
     state.selectedIndex = (nextIndex + menuItems.length) % menuItems.length;
     state.message = selectedMessage(menuItems[state.selectedIndex] ?? '');
@@ -116,10 +205,24 @@ export async function runDashboard(): Promise<void> {
       screen.destroy();
       return;
     }
-    state.status = 'working';
-    state.message = selectedMessage(selected ?? '');
-    createLayout(screen, state);
+    if (selected === 'Plan next steps') {
+      state.status = 'working';
+      state.message = selectedMessage(selected);
+      createLayout(screen, state);
+      return;
+    }
+    pendingAction = selected;
+    screen.destroy();
   });
   screen.key(['escape', 'q', 'C-c'], () => screen.destroy());
   screen.on('resize', () => createLayout(screen, state));
+
+  await new Promise<void>((resolve) => {
+    screen.once('destroy', resolve);
+  });
+
+  if (pendingAction) {
+    console.log('');
+    await executeAction(pendingAction);
+  }
 }

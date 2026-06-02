@@ -7,6 +7,8 @@ import { formatInvalidMemoryEntry, getInvalidMemoryEntries, getMemoryFiles, read
 import { getMemoryIndexState, queryMemoryIndex, validateMemoryIndexSchema } from '../core/memory-index.js';
 import { getOnboardingState } from '../core/onboard.js';
 import { brandTitle, section, statusLabel } from '../core/terminal-ui.js';
+import { getAdapter, type AgentId } from '../adapters/registry.js';
+import { readInstalledAdapters } from '../core/config.js';
 
 export const planningFiles = [
   '.planning/PROJECT.md',
@@ -24,6 +26,16 @@ export const codexSkillFiles = [
   '.codex/skills/flow-plan/SKILL.md',
   '.codex/skills/flow-verify/SKILL.md',
   '.codex/skills/flow-close/SKILL.md',
+];
+
+export const claudeSkillFiles = [
+  'CLAUDE.md',
+  '.claude/skills/flow-onboard/SKILL.md',
+  '.claude/skills/flow-resume/SKILL.md',
+  '.claude/skills/flow-quick/SKILL.md',
+  '.claude/skills/flow-plan/SKILL.md',
+  '.claude/skills/flow-verify/SKILL.md',
+  '.claude/skills/flow-close/SKILL.md',
 ];
 
 async function commandExists(command: string): Promise<boolean> {
@@ -61,11 +73,26 @@ export async function runDoctor(options: { cwd?: string } = {}): Promise<void> {
     });
   }
 
-  for (const file of codexSkillFiles) {
-    checks.push({
-      label: file,
-      ok: await fs.pathExists(path.join(root, file)),
-    });
+  const installedAdapters = await readInstalledAdapters(root);
+
+  for (const id of installedAdapters) {
+    const adapter = getAdapter(id);
+    for (const file of adapter.expectedFiles(root)) {
+      const relativePath = path.relative(root, file);
+      checks.push({
+        label: relativePath,
+        ok: await fs.pathExists(file),
+      });
+    }
+  }
+
+  if (installedAdapters.length === 0) {
+    for (const file of codexSkillFiles) {
+      checks.push({
+        label: file,
+        ok: await fs.pathExists(path.join(root, file)),
+      });
+    }
   }
 
   const entries = await readMemoryEntries(root);

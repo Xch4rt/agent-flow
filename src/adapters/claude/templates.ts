@@ -21,11 +21,40 @@ function commandChecklist(detection: ProjectDetection): string {
 
 const nextCommandRule = `Always end with:
 
-- Recommended next commands: exact copy-pasteable commands or Codex skill invocations, ordered by what the user should do next. Include only commands that are useful for the current state.`;
+- Recommended next commands: exact copy-pasteable commands or Claude Code skill invocations, ordered by what the user should do next. Include only commands that are useful for the current state.`;
+
+export function claudeMdTemplate(): string {
+  return `@AGENTS.md
+
+## Claude Code
+
+Use Agent Flow for project continuity.
+
+Start task-focused work with:
+
+\`\`\`sh
+agent-flow start "<task>"
+\`\`\`
+
+For focused context:
+
+\`\`\`sh
+agent-flow context "<task>"
+\`\`\`
+
+At the end of meaningful work:
+
+\`\`\`sh
+agent-flow close
+\`\`\`
+
+Prefer Agent Flow context packs over reading all \`.planning/\` and \`.memory/\` files manually.
+`;
+}
 
 export function flowOnboardSkill(detection: ProjectDetection): string {
   return `${header('flow-onboard', 'Inspect a repository for the first time and populate agent-flow planning files with useful project context.')}
-# flow-onboard
+# /flow-onboard
 
 Use when agent-flow was just installed or the planning files are thin.
 
@@ -37,12 +66,12 @@ agent-flow onboard
 
 Then inspect and improve anything the CLI could not infer.
 
-Goal: combine \`agent-flow onboard\` baseline context with Codex inspection so future \`$flow-resume\` calls are useful without the user explaining the repo.
+Goal: combine \`agent-flow onboard\` baseline context with Claude Code inspection so future \`/flow-resume\` calls are useful without the user explaining the repo.
 
 Inspect:
 
 1. Read \`AGENTS.md\` and existing \`.planning/*.md\`.
-2. Run \`git status --short\` and \`rg --files\`.
+2. Run \`git status --short\` and find relevant source files.
 3. Inspect repository structure and identify entry points, app boundaries, generated files, tests, scripts, and deployment/config files.
 4. Detect stack from manifests, lockfiles, config files, framework files, database/schema files, Docker files, and source layout.
 5. Identify available development, build, test, lint, and typecheck commands.
@@ -71,21 +100,21 @@ ${nextCommandRule}
 For onboarding, usually recommend:
 
 1. \`agent-flow doctor\`
-2. \`$flow-resume\`
+2. \`/flow-resume\`
 3. \`agent-flow context "<first task>"\` when the user has a specific task
-4. \`$flow-quick <small task>\` or \`$flow-plan <larger task>\`
+4. \`/flow-quick <small task>\` or \`/flow-plan <larger task>\`
 
 Do not implement feature changes during onboarding.
 `;
 }
 
 export function flowResumeSkill(detection: ProjectDetection): string {
-  return `${header('flow-resume', 'Resume a Codex session with current state, recent memory, decisions, risks, and next actions.')}
-# flow-resume
+  return `${header('flow-resume', 'Resume a Claude Code session with current state, recent memory, decisions, risks, and next actions.')}
+# /flow-resume
 
 Use at the start of a normal session after \`agent-flow onboard\` has been run. Do not change files unless the user asks.
 
-\`$flow-onboard\` is optional enrichment when deterministic onboarding is not enough.
+\`/flow-onboard\` is optional enrichment when deterministic onboarding is not enough.
 
 First detect shallow or fresh state:
 
@@ -98,7 +127,7 @@ When not onboarded, say exactly:
 This project has not been onboarded yet. Run \`agent-flow onboard\` first.
 \`\`\`
 
-Then mention \`$flow-onboard\` can add agent-assisted context after deterministic onboarding, and offer a lightweight resume from existing files only. Do not pretend durable project memory exists.
+Then mention \`/flow-onboard\` can add agent-assisted context after deterministic onboarding, and offer a lightweight resume from existing files only. Do not pretend durable project memory exists.
 
 For a specific task, prefer the project-aware context pack before reading raw memory. It uses the internal indexed memory when available:
 
@@ -128,7 +157,6 @@ Run lightweight checks:
 
 - \`git status --short\`
 - \`git log --oneline -5\` when commit history helps
-- \`rg --files\` only if planning files are stale or sparse
 
 Return:
 
@@ -150,15 +178,15 @@ ${nextCommandRule}
 For resume, usually recommend:
 
 1. \`agent-flow context "<current task>"\` for a task-specific brief
-2. \`$flow-quick <small task>\` for narrow implementation
-3. \`$flow-plan <larger task>\` for multi-phase work
-4. \`$flow-verify\` after edits
+2. \`/flow-quick <small task>\` for narrow implementation
+3. \`/flow-plan <larger task>\` for multi-phase work
+4. \`/flow-verify\` after edits
 `;
 }
 
 export function flowQuickSkill(detection: ProjectDetection): string {
   return `${header('flow-quick', 'Handle a small scoped code change with minimal diff and focused verification.')}
-# flow-quick
+# /flow-quick
 
 Use when the task is narrow, local, and can be completed in one pass.
 
@@ -196,14 +224,14 @@ ${nextCommandRule}
 For quick work, usually recommend:
 
 1. The narrowest verification command that applies
-2. \`$flow-verify\`
-3. \`$flow-close\` if the work is complete and worth recording
+2. \`/flow-verify\`
+3. \`/flow-close\` if the work is complete and worth recording
 `;
 }
 
 export function flowPlanSkill(): string {
   return `${header('flow-plan', 'Plan larger work as phases with acceptance criteria, risks, and verification before implementation.')}
-# flow-plan
+# /flow-plan
 
 Use when work crosses modules, changes architecture, affects data models, or has unclear requirements.
 
@@ -228,15 +256,15 @@ Plan format:
 - Risks: concrete failure modes.
 - Verification: commands and checks.
 - Memory updates: planning or JSONL entries to write after completion.
-- Recommended next commands: exact commands or Codex skill invocations to run next.
+- Recommended next commands: exact commands or Claude Code skill invocations to run next.
 
 Recommended next commands guidance:
 
-- If the plan is ready to implement, recommend \`$flow-quick <first narrow phase>\` for small first phases or \`$flow-plan <refined scope>\` only if more planning is still needed.
+- If the plan is ready to implement, recommend \`/flow-quick <first narrow phase>\` for small first phases or \`/flow-plan <refined scope>\` only if more planning is still needed.
 - Recommend \`agent-flow context "<task>"\` before implementation when the next step needs focused repo context.
 - Recommend project verification commands from package scripts when known from repo inspection.
-- Recommend \`$flow-verify\` after implementation.
-- Recommend \`$flow-close\` after verification to update planning and memory.
+- Recommend \`/flow-verify\` after implementation.
+- Recommend \`/flow-close\` after verification to update planning and memory.
 - Keep commands copy-pasteable and ordered. Do not include commands that are not useful for the specific plan.
 
 ${nextCommandRule}
@@ -247,7 +275,7 @@ Do not implement during planning unless the user explicitly asks to proceed.
 
 export function flowVerifySkill(detection: ProjectDetection): string {
   return `${header('flow-verify', 'Inspect the diff, run available checks, and detect scope creep before handing work back.')}
-# flow-verify
+# /flow-verify
 
 Use after edits and before final response.
 
@@ -286,7 +314,7 @@ ${nextCommandRule}
 
 For verification, usually recommend:
 
-1. \`$flow-close\` when the work is ready and should be recorded
+1. \`/flow-close\` when the work is ready and should be recorded
 2. The specific command or fix needed when verification fails
 3. \`git status --short\` before commit or handoff
 `;
@@ -294,7 +322,7 @@ For verification, usually recommend:
 
 export function flowCloseSkill(): string {
   return `${header('flow-close', 'Close a session by updating state and appending useful memory entries for future resumes.')}
-# flow-close
+# /flow-close
 
 Use at the end of meaningful work. The goal is continuity, not a diary.
 
@@ -353,6 +381,6 @@ For closeout, usually recommend:
 
 1. \`git status --short\`
 2. The relevant commit command if the work is ready
-3. \`$flow-resume\` for the next session
+3. \`/flow-resume\` for the next session
 `;
 }

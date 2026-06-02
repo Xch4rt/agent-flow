@@ -5,7 +5,9 @@ import { getInvalidMemoryEntries, getMemoryFiles, readMemoryEntries } from '../c
 import { getMemoryIndexState, inspectMemoryIndex } from '../core/memory-index.js';
 import { getOnboardingState } from '../core/onboard.js';
 import { brandTitle, keyValue, section, statusLabel } from '../core/terminal-ui.js';
-import { codexSkillFiles, planningFiles } from './doctor.js';
+import { planningFiles } from './doctor.js';
+import { getAdapter, getAdapterIds } from '../adapters/registry.js';
+import { readInstalledAdapters } from '../core/config.js';
 
 const coreFiles = [
   'AGENTS.md',
@@ -34,7 +36,6 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
   const missingCore = [];
   const missingPlanning = [];
   const missingMemory = [];
-  const missingSkills = [];
 
   for (const file of expectedFiles) {
     if (!(await fs.pathExists(path.join(root, file)))) {
@@ -48,9 +49,16 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
     }
   }
 
-  for (const file of codexSkillFiles) {
-    if (!(await fs.pathExists(path.join(root, file)))) {
-      missingSkills.push(file);
+  const installedAdapters = await readInstalledAdapters(root);
+  const allAdapterIds = getAdapterIds();
+  const missingAdapterFiles: string[] = [];
+
+  for (const id of installedAdapters) {
+    const adapter = getAdapter(id);
+    for (const file of adapter.expectedFiles(root)) {
+      if (!(await fs.pathExists(file))) {
+        missingAdapterFiles.push(path.relative(root, file));
+      }
     }
   }
 
@@ -76,6 +84,13 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
   console.log(commandLine('lint', detection.commands.lint));
   console.log(commandLine('typecheck', detection.commands.typecheck));
 
+  console.log(section('Installed adapters:'));
+  for (const id of allAdapterIds) {
+    const adapter = getAdapter(id);
+    const installed = installedAdapters.includes(id);
+    console.log(keyValue(`  ${adapter.label}:`, installed ? 'yes' : 'no'));
+  }
+
   console.log(section('Project health:'));
   console.log(keyValue('Missing core files:', String(missingCore.length)));
   console.log(keyValue('Missing planning files:', String(missingPlanning.length)));
@@ -87,7 +102,7 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
   console.log(keyValue('Memory index in sync:', memoryIndexState.status === 'in sync' ? 'yes' : 'no'));
   console.log(keyValue('Memory index last sync:', memoryIndexState.lastSyncAt ?? 'never'));
   console.log(keyValue('Indexed entries:', String(memoryIndexInspect ? Object.values(memoryIndexInspect.entryCounts).reduce((sum, count) => sum + count, 0) : 0)));
-  console.log(keyValue('Missing Codex skills:', String(missingSkills.length)));
+  console.log(keyValue('Missing adapter files:', String(missingAdapterFiles.length)));
   console.log(keyValue('Onboarded:', onboarding.onboarded ? 'yes' : 'no'));
   console.log(keyValue('Last onboarded:', onboarding.lastOnboardedAt ?? 'never'));
 
@@ -103,7 +118,7 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
   const warnings = [
     ...missingPlanning.map((file) => `missing planning file: ${file}`),
     ...missingMemory.map((file) => `missing memory file: ${file}`),
-    ...missingSkills.map((file) => `missing Codex skill: ${file}`),
+    ...missingAdapterFiles.map((file) => `missing adapter file: ${file}`),
     invalidMemoryEntries.length > 0 ? `invalid memory entries: ${invalidMemoryEntries.length}` : undefined,
     memoryIndexState.status === 'stale' ? 'memory index is stale; memory query/context will auto-sync or run agent-flow memory rebuild' : undefined,
     eventsExists && !eventsContent.trim() ? 'empty .memory/events.jsonl' : undefined,

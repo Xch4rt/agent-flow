@@ -1,14 +1,16 @@
 # Agent Flow
 
-Agent Flow is a Codex-first workflow and memory layer for software projects.
+Agent Flow is a local workflow and memory layer for AI coding agents, with first-class support for Codex and Claude Code.
 
 > Never explain your repo twice.
 
 ## What It Is
 
-Agent Flow helps Codex understand a repository once, save the useful context, and reuse it across future coding sessions.
+Agent Flow helps AI coding agents understand a repository once, save the useful context, and reuse it across future coding sessions.
 
 It is not a generic agent framework. It is a small developer tool for project continuity: onboarding a repo, resuming context, planning work, verifying changes, and closing a session with useful memory.
+
+Codex uses `.codex/skills/`. Claude Code uses `CLAUDE.md` and `.claude/skills/`. Shared Agent Flow memory remains `.planning/` and `.memory/`. The core value is the same across agents: avoid repeatedly explaining the repo.
 
 ## The Problem
 
@@ -22,6 +24,27 @@ AI coding sessions often start with the same manual explanation:
 - What still needs attention
 
 Agent Flow turns that repeated explanation into repo-local planning files, memory entries, and Codex skills.
+
+## Daily Usage
+
+**Before Agent Flow:**
+
+- Explain the repo again.
+- Paste architecture notes.
+- Tell Codex what files matter.
+- Repeat prior decisions and known errors.
+- Waste tokens and risk missing context.
+
+**After Agent Flow:**
+
+```sh
+agent-flow start "fix billing webhook"
+# paste the context pack into Codex
+# work with $flow-quick or $flow-plan
+agent-flow close
+```
+
+That is the daily loop. `start` builds a compact context pack with project state, relevant memory, and verification commands. `close` saves what happened so the next session picks up where you left off.
 
 ## Quick Start
 
@@ -62,54 +85,48 @@ pnpm link --global
 Initialize a project:
 
 ```sh
-agent-flow init --codex
+agent-flow init --codex    # for Codex
+agent-flow init --claude   # for Claude Code
+agent-flow init --agent all  # for both
 agent-flow onboard
 ```
 
-Open Codex in the repository, then start with:
-
-```text
-$flow-resume
-```
-
-From then on, start future sessions with:
-
-```text
-$flow-resume
-```
+Or just run `agent-flow` in an uninitialized repo for guided setup.
 
 ## Daily Workflow
 
 Agent Flow is built around this loop:
 
 ```text
-init -> onboard -> close -> resume -> work -> verify -> close
+init -> onboard -> start -> work -> close
 ```
 
 First-time setup:
 
 1. Run `agent-flow init --codex`
 2. Run `agent-flow onboard`
-3. Open Codex in the repo
-4. Run `$flow-resume`
+3. Run `agent-flow doctor`
+
+Or just run `agent-flow` in an uninitialized repo and follow the guided setup.
 
 Daily use:
 
-1. Start with `$flow-resume`
-2. Use `$flow-quick` for small scoped changes
-3. Use `$flow-plan` for larger work
-4. Use `$flow-verify` before commit or handoff
-5. End with `$flow-close`
+1. Start with `agent-flow start "your task"` (or `$flow-resume` inside Codex, `/flow-resume` inside Claude Code)
+2. Paste the context pack into your agent
+3. Use `$flow-quick` for small scoped changes
+4. Use `$flow-plan` for larger work
+5. Use `$flow-verify` before commit or handoff
+6. End with `agent-flow close` (or `$flow-close` inside Codex)
 
 Useful CLI checks:
 
 ```sh
 agent-flow status
 agent-flow doctor
+agent-flow context "fix billing webhook" --stats
 agent-flow memory list
 agent-flow memory search "auth"
-agent-flow memory context "auth"
-agent-flow context "fix billing webhook"
+agent-flow memory query "billing webhook"
 ```
 
 ## Dashboard
@@ -127,11 +144,13 @@ In non-interactive environments such as CI, pipes, or captured command output, A
 ## Commands
 
 ```sh
-agent-flow init --codex [--force] [--force-memory]
+agent-flow init [--codex] [--claude] [--agent codex|claude|all] [--force] [--force-memory]
 agent-flow onboard [--refresh] [--dry-run] [--force]
+agent-flow start <task> [--module name] [--limit n] [--budget-lines n] [--json] [--stats]
+agent-flow close [--change "..."] [--decision "..."] [--error "..."] [--next "..."] [--module name] [--allow-duplicate]
 agent-flow status
 agent-flow doctor
-agent-flow context <task> [--module name] [--limit n] [--budget-lines n] [--json]
+agent-flow context <task> [--module name] [--limit n] [--budget-lines n] [--json] [--stats]
 agent-flow memory list
 agent-flow memory search <query> [--file events|modules|decisions|errors] [--type type] [--module name] [--limit n]
 agent-flow memory query <query> [--module name] [--drawer name] [--type type] [--status status] [--limit n] [--json]
@@ -312,12 +331,15 @@ For `agent-flow onboard`, `--force` replaces generated onboarding sections only.
 
 Current MVP:
 
-- Interactive terminal dashboard with non-interactive fallback
+- Interactive terminal dashboard with real actions
+- First-run guided setup for uninitialized repos
+- `agent-flow start <task>` with context pack and next-action guidance
+- `agent-flow close` with interactive and non-interactive memory capture
 - `agent-flow init --codex`
 - `agent-flow onboard`
 - `agent-flow status`
 - `agent-flow doctor`
-- `agent-flow context <task>`
+- `agent-flow context <task>` with `--stats` for token savings
 - `agent-flow memory list`
 - `agent-flow memory search <query>`
 - `agent-flow memory query <query>`
@@ -341,4 +363,4 @@ Near-term roadmap:
 - Memory uses JSONL as source plus an internal SQLite query index; there is no semantic search yet.
 - Monorepos are not deeply understood yet.
 - Detection is intentionally simple.
-- No MCP, embeddings, user-managed databases, or Claude adapter are included in this MVP.
+- No MCP, embeddings, or user-managed databases are included in this MVP.
