@@ -19,6 +19,7 @@ import {
   runMemoryValidate,
 } from './commands/memory.js';
 import { runOnboard } from './commands/onboard.js';
+import { runAdvance, runGateCommand, runNext } from './commands/orchestrate.js';
 import { runPlanInit, runPlanShow, runPlanValidate } from './commands/plan.js';
 import { runStart } from './commands/start.js';
 import { runStatus } from './commands/status.js';
@@ -168,6 +169,34 @@ export function createProgram(): Command {
     .option('--json', 'Print structured JSON')
     .action(async (options: { json?: boolean }) => {
       await runPlanShow(options);
+    });
+
+  program
+    .command('next')
+    .description('Show the next actionable task with a scoped context pack and gate commands.')
+    .option('--budget-lines <number>', 'Approximate maximum context-pack lines')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { budgetLines?: string; json?: boolean }) => {
+      await runNext(options);
+    });
+
+  program
+    .command('gate')
+    .description('Run the gate commands (tests/typecheck/...) for a task and cache the result.')
+    .option('--task <id>', 'Task id to gate (defaults to the next actionable task)')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { task?: string; json?: boolean }) => {
+      await runGateCommand(options);
+    });
+
+  program
+    .command('advance')
+    .description('Mark a task done if its gate is green, append memory, and move the cursor.')
+    .option('--task <id>', 'Task id to advance (defaults to the next actionable task)')
+    .option('--gate', 'Run gates now instead of requiring a cached green result')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { task?: string; gate?: boolean; json?: boolean }) => {
+      await runAdvance(options);
     });
 
   const memory = program.command('memory').description('Inspect local JSONL memory.');

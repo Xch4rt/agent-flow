@@ -231,6 +231,51 @@ function depsSatisfied(deps: string[], doneIds: Set<string>): boolean {
   return deps.every((d) => doneIds.has(d));
 }
 
+/** Find a task by id across all phases. */
+export function findTask(plan: Plan, taskId: string): { phase: Phase; task: Task } | null {
+  for (const phase of plan.phases) {
+    const task = phase.tasks.find((t) => t.id === taskId);
+    if (task) return { phase, task };
+  }
+  return null;
+}
+
+/** Resolve the target task: an explicit id, else the next actionable task. */
+export function resolveTargetTask(
+  plan: Plan,
+  taskId?: string,
+): { phase: Phase; task: Task } | null {
+  if (taskId) return findTask(plan, taskId);
+  return nextTask(plan);
+}
+
+function recomputePhaseStatus(phase: Phase): void {
+  if (phase.tasks.length === 0) return;
+  if (phase.tasks.every((t) => t.status === 'done')) {
+    phase.status = 'done';
+  } else if (phase.tasks.some((t) => t.status === 'done' || t.status === 'active')) {
+    phase.status = 'active';
+  } else {
+    phase.status = 'pending';
+  }
+}
+
+/** Mutates the plan in place: sets a task status and recomputes its phase + cursor. */
+export function setTaskStatus(plan: Plan, taskId: string, status: Task['status']): boolean {
+  const found = findTask(plan, taskId);
+  if (!found) return false;
+  found.task.status = status;
+  recomputePhaseStatus(found.phase);
+  recomputeCursor(plan);
+  return true;
+}
+
+/** Mutates the plan in place: point the cursor at the next actionable task (or null). */
+export function recomputeCursor(plan: Plan): void {
+  const next = nextTask(plan);
+  plan.cursor = next ? { phase: next.phase.id, task: next.task.id } : { phase: null, task: null };
+}
+
 /**
  * The next actionable task: earliest phase whose phase-deps are done, then the
  * lowest-wave pending task whose task-deps are done. Deterministic, no LLM.
