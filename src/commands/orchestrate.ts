@@ -16,6 +16,7 @@ import {
   writeGateCache,
   type GateResult,
 } from '../core/gates.js';
+import { getReviewTier, readReviewRecord, reviewStatus } from '../core/review.js';
 import type { Plan, Task } from '../core/plan-schema.js';
 import { brandTitle, keyValue, section, statusLabel } from '../core/terminal-ui.js';
 
@@ -180,6 +181,7 @@ export async function runAdvance(options: AdvanceOptions = {}): Promise<void> {
 
   const { phase, task } = target;
   const gateNames = gateNamesFor(task, await getDefaultGates(root));
+  const signature = await worktreeSignature(root);
 
   // Determine whether gates are green for THIS code.
   let gateOk: boolean;
@@ -188,7 +190,7 @@ export async function runAdvance(options: AdvanceOptions = {}): Promise<void> {
     const run = await runGates(root, gateNames);
     await writeGateCache(root, {
       task: task.id,
-      signature: await worktreeSignature(root),
+      signature,
       ok: run.ok,
       gates: gateNames,
       at: new Date().toISOString(),
@@ -198,7 +200,6 @@ export async function runAdvance(options: AdvanceOptions = {}): Promise<void> {
     if (!run.ok) printGateResults(run.results);
   } else {
     const cache = await readGateCache(root);
-    const signature = await worktreeSignature(root);
     if (!cache || cache.task !== task.id) {
       gateOk = false;
       gateDetail = `no gate result for task ${task.id}`;
@@ -220,6 +221,20 @@ export async function runAdvance(options: AdvanceOptions = {}): Promise<void> {
     console.log(`Run: ${pc.cyan(`agent-flow gate --task ${task.id}`)} (or ${pc.cyan(`agent-flow advance --task ${task.id} --gate`)})`);
     process.exitCode = 1;
     return;
+  }
+
+  // Tier-1 review gate: closing a phase requires a passing independent review
+  // for the current code.
+  const phaseWillClose = phase.tasks.every((t) => t.id === task.id || t.status === 'done');
+  if (phaseWillClose && (await getReviewTier(root)) >= 1) {
+    const status = reviewStatus(await readReviewRecord(root, phase.id), signature);
+    if (status !== 'pass') {
+      console.log(brandTitle('agent-flow advance'));
+      console.log(`${statusLabel('fail')} cannot close phase ${phase.id}: independent review ${status}`);
+      console.log(`Run: ${pc.cyan(`agent-flow review emit --phase ${phase.id}`)}, have a reviewer judge it, then ${pc.cyan(`agent-flow review record --phase ${phase.id} --verdict pass`)}`);
+      process.exitCode = 1;
+      return;
+    }
   }
 
   // Advance state.

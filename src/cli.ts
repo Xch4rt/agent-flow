@@ -21,6 +21,7 @@ import {
 import { runOnboard } from './commands/onboard.js';
 import { runAdvance, runGateCommand, runNext } from './commands/orchestrate.js';
 import { runPlanInit, runPlanShow, runPlanValidate } from './commands/plan.js';
+import { runReviewEmit, runReviewRecord } from './commands/review.js';
 import { runStart } from './commands/start.js';
 import { runStatus } from './commands/status.js';
 import { brandTitle } from './core/terminal-ui.js';
@@ -197,6 +198,30 @@ export function createProgram(): Command {
     .option('--json', 'Print structured JSON')
     .action(async (options: { task?: string; gate?: boolean; json?: boolean }) => {
       await runAdvance(options);
+    });
+
+  const review = program
+    .command('review')
+    .description('Tier-1 independent phase review (emit a review envelope; record the verdict).');
+
+  review
+    .command('emit')
+    .description('Emit a review envelope for a phase (briefing for an independent reviewer).')
+    .requiredOption('--phase <id>', 'Phase id to review')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { phase: string; json?: boolean }) => {
+      await runReviewEmit(options);
+    });
+
+  review
+    .command('record')
+    .description('Record an independent reviewer verdict, keyed to the current code.')
+    .requiredOption('--phase <id>', 'Phase id reviewed')
+    .requiredOption('--verdict <verdict>', 'pass or fail')
+    .option('--notes <notes>', 'Reviewer notes')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { phase: string; verdict: string; notes?: string; json?: boolean }) => {
+      await runReviewRecord(options);
     });
 
   const memory = program.command('memory').description('Inspect local JSONL memory.');
