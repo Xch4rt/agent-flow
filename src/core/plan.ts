@@ -49,6 +49,48 @@ export function emptyPlan(now = new Date(), milestone = 'v1'): Plan {
   };
 }
 
+/**
+ * Draft plan grouped by requirement prefix (SHORT-*, REDIR-*, ...), one phase
+ * per prefix with a single placeholder task. A starting point to refine — every
+ * requirement is mapped so `plan validate` passes coverage immediately.
+ */
+export function scaffoldPlanFromRequirements(universe: string[], now = new Date()): Plan {
+  const groups = new Map<string, string[]>();
+  for (const req of universe) {
+    const prefix = req.split('-')[0];
+    if (!groups.has(prefix)) groups.set(prefix, []);
+    groups.get(prefix)!.push(req);
+  }
+
+  const phases: Phase[] = [...groups.entries()].map(([prefix, requirements], index) => {
+    const id = String(index + 1);
+    return {
+      id,
+      title: `${prefix} (draft — rename)`,
+      goal: '',
+      requirements,
+      dependsOn: [],
+      status: 'pending' as const,
+      tasks: [
+        {
+          id: `${id}.1`,
+          title: 'draft task — split and define',
+          scope: [],
+          wave: 1,
+          dependsOn: [],
+          status: 'pending' as const,
+          gates: [],
+          acceptance: [],
+        },
+      ],
+    };
+  });
+
+  const plan: Plan = { ...emptyPlan(now), phases };
+  recomputeCursor(plan);
+  return plan;
+}
+
 /** Extract the requirement-id universe from REQUIREMENTS.md (deterministic, no LLM). */
 export async function parseRequirementUniverse(root: string): Promise<string[]> {
   const file = path.join(root, '.planning', 'REQUIREMENTS.md');
@@ -218,6 +260,36 @@ export function computeProgress(plan: Plan): Progress {
   }
   const percent = tasksTotal === 0 ? 0 : Math.round((tasksDone / tasksTotal) * 100);
   return { phasesTotal, phasesDone, tasksTotal, tasksDone, percent };
+}
+
+/** Render plan.json as a human-readable ROADMAP.md (a generated view). */
+export function renderRoadmap(plan: Plan): string {
+  const progress = computeProgress(plan);
+  const lines: string[] = [
+    '# Roadmap',
+    '',
+    '> Generated from `.agent-flow/plan.json` by `agent-flow plan render`. Edit the plan, not this file.',
+    '',
+    `**Milestone:** ${plan.milestone}`,
+    `**Progress:** ${progress.tasksDone}/${progress.tasksTotal} tasks (${progress.percent}%), ${progress.phasesDone}/${progress.phasesTotal} phases`,
+    '',
+  ];
+
+  for (const phase of plan.phases) {
+    lines.push(`## Phase ${phase.id}: ${phase.title} — ${phase.status}`);
+    if (phase.goal) lines.push(`**Goal:** ${phase.goal}`);
+    if (phase.requirements.length > 0) lines.push(`**Requirements:** ${phase.requirements.join(', ')}`);
+    if (phase.dependsOn.length > 0) lines.push(`**Depends on:** ${phase.dependsOn.join(', ')}`);
+    lines.push('');
+    for (const task of phase.tasks) {
+      const box = task.status === 'done' ? '[x]' : '[ ]';
+      lines.push(`- ${box} ${task.id} (wave ${task.wave}) ${task.title} — ${task.status}`);
+      for (const a of task.acceptance) lines.push(`  - ${a.id} [${a.proof ?? 'manual'}]: ${a.text}`);
+    }
+    lines.push('');
+  }
+
+  return `${lines.join('\n').trimEnd()}\n`;
 }
 
 export function phaseProgress(phase: Phase): { done: number; total: number } {

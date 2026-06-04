@@ -1,6 +1,7 @@
 import fs from 'fs-extra';
 import pc from 'picocolors';
 import { brandTitle, keyValue, section, statusLabel } from '../core/terminal-ui.js';
+import path from 'node:path';
 import {
   computeProgress,
   emptyPlan,
@@ -9,13 +10,16 @@ import {
   parseRequirementUniverse,
   phaseProgress,
   planPath,
+  renderRoadmap,
+  scaffoldPlanFromRequirements,
   validatePlanStructure,
   writePlan,
 } from '../core/plan.js';
 
-export type PlanInitOptions = { cwd?: string; force?: boolean; json?: boolean };
+export type PlanInitOptions = { cwd?: string; force?: boolean; scaffold?: boolean; json?: boolean };
 export type PlanValidateOptions = { cwd?: string; json?: boolean };
 export type PlanShowOptions = { cwd?: string; json?: boolean };
+export type PlanRenderOptions = { cwd?: string; json?: boolean };
 
 export async function runPlanInit(options: PlanInitOptions = {}): Promise<void> {
   const root = options.cwd ?? process.cwd();
@@ -27,11 +31,13 @@ export async function runPlanInit(options: PlanInitOptions = {}): Promise<void> 
   }
 
   const universe = await parseRequirementUniverse(root);
-  const plan = emptyPlan();
+  const plan = options.scaffold && universe.length > 0
+    ? scaffoldPlanFromRequirements(universe)
+    : emptyPlan();
   await writePlan(root, plan);
 
   if (options.json) {
-    console.log(JSON.stringify({ created: true, path: planPath(root), requirements: universe }, null, 2));
+    console.log(JSON.stringify({ created: true, scaffolded: Boolean(options.scaffold && universe.length), path: planPath(root), requirements: universe }, null, 2));
     return;
   }
 
@@ -42,12 +48,44 @@ export async function runPlanInit(options: PlanInitOptions = {}): Promise<void> 
     console.log(section(`Requirements found in REQUIREMENTS.md (${universe.length}):`));
     console.log(`  ${universe.join(', ')}`);
     console.log('');
-    console.log('Author phases/tasks in the plan (directly or via /flow-plan), then:');
+    if (options.scaffold) {
+      console.log(`Seeded ${plan.phases.length} draft phase(s) grouped by prefix. Refine titles/tasks/scope, then:`);
+    } else {
+      console.log('Author phases/tasks in the plan (directly or via /flow-plan), then:');
+    }
   } else {
     console.log('No requirement ids found in .planning/REQUIREMENTS.md.');
     console.log('Add requirements (e.g. AUTH-01), author phases, then:');
   }
   console.log(`  ${pc.cyan('agent-flow plan validate')}`);
+}
+
+export async function runPlanRender(options: PlanRenderOptions = {}): Promise<void> {
+  const root = options.cwd ?? process.cwd();
+  const loaded = await loadPlan(root);
+
+  if (!loaded.exists) {
+    console.log(`${statusLabel('fail')} no plan found. Run: agent-flow plan init`);
+    process.exitCode = 1;
+    return;
+  }
+  if (!loaded.valid) {
+    console.log(`${statusLabel('fail')} plan is invalid. Run: agent-flow plan validate`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const roadmapPath = path.join(root, '.planning', 'ROADMAP.md');
+  await fs.ensureDir(path.dirname(roadmapPath));
+  await fs.writeFile(roadmapPath, renderRoadmap(loaded.plan));
+
+  if (options.json) {
+    console.log(JSON.stringify({ rendered: true, path: roadmapPath }, null, 2));
+    return;
+  }
+
+  console.log(brandTitle('agent-flow plan render'));
+  console.log(`${statusLabel('ok')} wrote ${path.relative(root, roadmapPath)} from plan.json`);
 }
 
 function printValidation(root: string, label: string, validation: ReturnType<typeof validatePlanStructure>): void {

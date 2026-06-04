@@ -147,6 +147,12 @@ export function configTemplate(detection: ProjectDetection, adapterIds: string[]
     adapters[id] = true;
   }
 
+  const gates: Record<string, string> = {};
+  for (const key of ['test', 'typecheck', 'lint', 'build'] as const) {
+    const command = detection.commands[key];
+    if (command) gates[key] = command;
+  }
+
   return `${JSON.stringify(
     {
       schemaVersion: 1,
@@ -155,6 +161,16 @@ export function configTemplate(detection: ProjectDetection, adapterIds: string[]
       planningDir: '.planning',
       memoryDir: '.memory',
       adapters,
+      orchestration: {
+        // Named gates run by `agent-flow gate`/`advance` (override or add freely).
+        gates,
+        // Gates used when a task declares none.
+        defaultGates: gates.test ? ['test'] : [],
+        // A gate with no resolved command fails instead of being skipped.
+        strictGates: false,
+        // 0 = deterministic gates only; 1 = require an independent phase review.
+        review: { tier: 0 },
+      },
     },
     null,
     2,

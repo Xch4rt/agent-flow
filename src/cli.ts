@@ -20,7 +20,7 @@ import {
 } from './commands/memory.js';
 import { runOnboard } from './commands/onboard.js';
 import { runAdvance, runGateCommand, runNext } from './commands/orchestrate.js';
-import { runPlanInit, runPlanShow, runPlanValidate } from './commands/plan.js';
+import { runPlanInit, runPlanRender, runPlanShow, runPlanValidate } from './commands/plan.js';
 import { runReviewEmit, runReviewRecord } from './commands/review.js';
 import { runStart } from './commands/start.js';
 import { runStatus } from './commands/status.js';
@@ -150,9 +150,10 @@ export function createProgram(): Command {
   plan
     .command('init')
     .description('Create .agent-flow/plan.json, seeded from REQUIREMENTS.md requirement ids.')
+    .option('--scaffold', 'Seed draft phases grouped by requirement prefix')
     .option('--force', 'Recreate the plan even if one already exists')
     .option('--json', 'Print structured JSON')
-    .action(async (options: { force?: boolean; json?: boolean }) => {
+    .action(async (options: { scaffold?: boolean; force?: boolean; json?: boolean }) => {
       await runPlanInit(options);
     });
 
@@ -172,13 +173,22 @@ export function createProgram(): Command {
       await runPlanShow(options);
     });
 
+  plan
+    .command('render')
+    .description('Regenerate .planning/ROADMAP.md as a human view of plan.json.')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { json?: boolean }) => {
+      await runPlanRender(options);
+    });
+
   program
     .command('next')
     .description('Show the next actionable task with a scoped context pack and gate commands.')
     .option('--wave', 'Emit envelopes for all parallelizable tasks in the next wave (fan-out)')
+    .option('--peek', 'Do not mark the task active (no state mutation)')
     .option('--budget-lines <number>', 'Approximate maximum context-pack lines')
     .option('--json', 'Print structured JSON')
-    .action(async (options: { wave?: boolean; budgetLines?: string; json?: boolean }) => {
+    .action(async (options: { wave?: boolean; peek?: boolean; budgetLines?: string; json?: boolean }) => {
       await runNext(options);
     });
 
@@ -186,8 +196,9 @@ export function createProgram(): Command {
     .command('gate')
     .description('Run the gate commands (tests/typecheck/...) for a task and cache the result.')
     .option('--task <id>', 'Task id to gate (defaults to the next actionable task)')
+    .option('--strict', 'Fail (not skip) a gate that has no resolved command')
     .option('--json', 'Print structured JSON')
-    .action(async (options: { task?: string; json?: boolean }) => {
+    .action(async (options: { task?: string; strict?: boolean; json?: boolean }) => {
       await runGateCommand(options);
     });
 
@@ -196,8 +207,9 @@ export function createProgram(): Command {
     .description('Mark a task done if its gate is green, append memory, and move the cursor.')
     .option('--task <id>', 'Task id to advance (defaults to the next actionable task)')
     .option('--gate', 'Run gates now instead of requiring a cached green result')
+    .option('--strict', 'With --gate, fail a gate that has no resolved command')
     .option('--json', 'Print structured JSON')
-    .action(async (options: { task?: string; gate?: boolean; json?: boolean }) => {
+    .action(async (options: { task?: string; gate?: boolean; strict?: boolean; json?: boolean }) => {
       await runAdvance(options);
     });
 

@@ -11,6 +11,7 @@ import {
 } from '../core/plan.js';
 import {
   getDefaultGates,
+  getStrictGates,
   readGateCache,
   resolveGateCommands,
   runGates,
@@ -22,9 +23,9 @@ import { getReviewTier, readReviewRecord, reviewStatus } from '../core/review.js
 import type { Phase, Plan, Task } from '../core/plan-schema.js';
 import { brandTitle, keyValue, section, statusLabel } from '../core/terminal-ui.js';
 
-export type NextOptions = { cwd?: string; json?: boolean; budgetLines?: string | number; wave?: boolean };
-export type GateCmdOptions = { cwd?: string; task?: string; json?: boolean };
-export type AdvanceOptions = { cwd?: string; task?: string; gate?: boolean; json?: boolean };
+export type NextOptions = { cwd?: string; json?: boolean; budgetLines?: string | number; wave?: boolean; peek?: boolean };
+export type GateCmdOptions = { cwd?: string; task?: string; strict?: boolean; json?: boolean };
+export type AdvanceOptions = { cwd?: string; task?: string; gate?: boolean; strict?: boolean; json?: boolean };
 
 function parseBudgetLines(value: string | number | undefined): number {
   if (value === undefined) return 100;
@@ -103,7 +104,7 @@ export async function runNext(options: NextOptions = {}): Promise<void> {
   const budgetLines = parseBudgetLines(options.budgetLines);
 
   if (options.wave) {
-    await runNextWave(root, plan, budgetLines, Boolean(options.json));
+    await runNextWave(root, plan, budgetLines, Boolean(options.json), Boolean(options.peek));
     return;
   }
 
@@ -116,8 +117,8 @@ export async function runNext(options: NextOptions = {}): Promise<void> {
 
   const { phase, task } = target;
 
-  // Mark in-flight (idempotent) so status reflects the active task.
-  if (task.status === 'pending') {
+  // Mark in-flight (idempotent) so status reflects the active task. --peek skips it.
+  if (task.status === 'pending' && !options.peek) {
     setTaskStatus(plan, task.id, 'active');
     await writePlan(root, plan);
   }
@@ -137,7 +138,7 @@ export async function runNext(options: NextOptions = {}): Promise<void> {
   console.log(`  2) on green:         ${pc.cyan(`agent-flow advance --task ${task.id}`)}`);
 }
 
-async function runNextWave(root: string, plan: Plan, budgetLines: number, json: boolean): Promise<void> {
+async function runNextWave(root: string, plan: Plan, budgetLines: number, json: boolean, peek: boolean): Promise<void> {
   const wave = nextWave(plan);
   if (!wave) {
     console.log(brandTitle('agent-flow next --wave'));
@@ -147,10 +148,10 @@ async function runNextWave(root: string, plan: Plan, budgetLines: number, json: 
 
   const { batch, heldBack } = conflictFreeBatch(wave.tasks);
 
-  // Mark batched tasks in-flight (idempotent).
+  // Mark batched tasks in-flight (idempotent). --peek skips it.
   let changed = false;
   for (const { task } of batch) {
-    if (task.status === 'pending') {
+    if (task.status === 'pending' && !peek) {
       setTaskStatus(plan, task.id, 'active');
       changed = true;
     }
@@ -218,7 +219,8 @@ export async function runGateCommand(options: GateCmdOptions = {}): Promise<void
 
   const { task } = target;
   const gateNames = gateNamesFor(task, await getDefaultGates(root));
-  const run = await runGates(root, gateNames);
+  const strict = options.strict ?? (await getStrictGates(root));
+  const run = await runGates(root, gateNames, { strict });
 
   await writeGateCache(root, {
     task: task.id,
@@ -265,7 +267,8 @@ export async function runAdvance(options: AdvanceOptions = {}): Promise<void> {
   let gateOk: boolean;
   let gateDetail: string;
   if (options.gate) {
-    const run = await runGates(root, gateNames);
+    const strict = options.strict ?? (await getStrictGates(root));
+    const run = await runGates(root, gateNames, { strict });
     await writeGateCache(root, {
       task: task.id,
       signature,

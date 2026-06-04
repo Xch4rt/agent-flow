@@ -159,7 +159,53 @@ agent-flow memory rebuild [--dry-run] [--json]
 agent-flow memory context <query> [--limit n]
 agent-flow memory validate
 agent-flow memory append --file events --type event --summary "..." [--module name] [--files a,b] [--tags tag]
+agent-flow plan init [--scaffold] [--force] [--json]
+agent-flow plan validate [--json]
+agent-flow plan show [--json]
+agent-flow plan render [--json]
+agent-flow next [--wave] [--peek] [--budget-lines n] [--json]
+agent-flow gate [--task id] [--strict] [--json]
+agent-flow advance [--task id] [--gate] [--strict] [--json]
+agent-flow review emit --phase id [--json]
+agent-flow review record --phase id --verdict pass|fail [--notes "..."] [--json]
 ```
+
+## Orchestration
+
+Agent Flow can drive a project as a deterministic state machine while keeping the
+continuity layer. It never spawns agents itself — it emits envelopes and runs
+gates; your agent does the work. Orchestration overhead stays near zero because
+each step gets a scoped context pack instead of the whole repo.
+
+The plan lives in `.agent-flow/plan.json` (canonical, committed). It groups work
+into phases and tasks with requirements, waves, dependencies, gates, and
+acceptance criteria. `.planning/ROADMAP.md` is a generated human view
+(`agent-flow plan render`).
+
+The loop:
+
+```sh
+agent-flow plan init            # seed .agent-flow/plan.json (author phases, or --scaffold)
+agent-flow plan validate        # requirement coverage, dependency DAG, waves
+agent-flow next                 # next task + acceptance + gates + a scoped context pack
+# ... implement the task ...
+agent-flow gate --task 1.1      # run the task's gates (tests/typecheck), cache the result
+agent-flow advance --task 1.1   # marks done only if the gate is green; appends memory; moves on
+```
+
+Gates are configured in `.agent-flow/config.json` under `orchestration` and
+resolved from detected package scripts by default. `advance` is a hard gate: it
+refuses unless the gates are green for the current code (a worktree content
+signature ties the cached result to the exact code).
+
+Tiered rigor (opt-in, set `orchestration.review.tier`):
+
+- Tier 0 (default): deterministic gates only — zero added agent cost.
+- Tier 1: closing a phase requires an independent review. `agent-flow review emit
+  --phase N` prints a review envelope to hand to a separate reviewer; record the
+  verdict with `agent-flow review record --phase N --verdict pass|fail`.
+- Tier 2: `agent-flow next --wave` emits one envelope per parallelizable task in
+  the next wave (scope-disjoint) so the host runtime can fan out.
 
 ## Available Skills
 

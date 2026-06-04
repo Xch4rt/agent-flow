@@ -66,6 +66,7 @@ describe('init --codex', () => {
       packageManager: 'pnpm',
       detectedStack: ['Next.js'],
       adapters: { codex: true, claude: false },
+      orchestration: { review: { tier: 0 }, strictGates: false },
     });
   });
 

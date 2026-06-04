@@ -40,20 +40,30 @@ export async function getDefaultGates(root: string): Promise<string[]> {
   return orchestration.defaultGates ?? ['test'];
 }
 
+export async function getStrictGates(root: string): Promise<boolean> {
+  const config = await readConfig(root);
+  const orchestration = (config?.orchestration ?? {}) as { strictGates?: boolean };
+  return orchestration.strictGates === true;
+}
+
+export type RunGateOptions = { strict?: boolean };
+
 export async function runGate(
   root: string,
   name: string,
   commands: Record<string, string>,
+  options: RunGateOptions = {},
 ): Promise<GateResult> {
   const command = commands[name];
   if (!command) {
     return {
       name,
       command: null,
-      ok: true,
+      // In strict mode an unresolved gate fails instead of being skipped.
+      ok: !options.strict,
       exitCode: null,
-      outputTail: `no command resolved for gate "${name}" — skipped`,
-      skipped: true,
+      outputTail: `no command resolved for gate "${name}"${options.strict ? ' — strict: failing' : ' — skipped'}`,
+      skipped: !options.strict,
     };
   }
 
@@ -71,11 +81,11 @@ export async function runGate(
   };
 }
 
-export async function runGates(root: string, names: string[]): Promise<GateRun> {
+export async function runGates(root: string, names: string[], options: RunGateOptions = {}): Promise<GateRun> {
   const commands = await resolveGateCommands(root);
   const results: GateResult[] = [];
   for (const name of names) {
-    results.push(await runGate(root, name, commands));
+    results.push(await runGate(root, name, commands, options));
   }
   return { ok: results.every((r) => r.ok), results };
 }
