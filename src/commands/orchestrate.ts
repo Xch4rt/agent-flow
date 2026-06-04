@@ -2,7 +2,9 @@ import pc from 'picocolors';
 import { buildContextPack, formatContextPack } from '../core/context-pack.js';
 import { appendMemoryEntry } from '../core/jsonl-memory.js';
 import {
+  conflictFreeBatch,
   loadPlan,
+  nextWave,
   resolveTargetTask,
   setTaskStatus,
   writePlan,
@@ -17,10 +19,10 @@ import {
   type GateResult,
 } from '../core/gates.js';
 import { getReviewTier, readReviewRecord, reviewStatus } from '../core/review.js';
-import type { Plan, Task } from '../core/plan-schema.js';
+import type { Phase, Plan, Task } from '../core/plan-schema.js';
 import { brandTitle, keyValue, section, statusLabel } from '../core/terminal-ui.js';
 
-export type NextOptions = { cwd?: string; json?: boolean; budgetLines?: string | number };
+export type NextOptions = { cwd?: string; json?: boolean; budgetLines?: string | number; wave?: boolean };
 export type GateCmdOptions = { cwd?: string; task?: string; json?: boolean };
 export type AdvanceOptions = { cwd?: string; task?: string; gate?: boolean; json?: boolean };
 
@@ -53,10 +55,57 @@ function gateNamesFor(task: Task, fallback: string[]): string[] {
 // agent-flow next
 // ---------------------------------------------------------------------------
 
+type TaskEnvelope = {
+  phase: Phase;
+  task: Task;
+  gateNames: string[];
+  commands: Record<string, string>;
+  pack: Awaited<ReturnType<typeof buildContextPack>>;
+  formattedPack: string;
+};
+
+async function buildTaskEnvelope(root: string, phase: Phase, task: Task, budgetLines: number): Promise<TaskEnvelope> {
+  const commands = await resolveGateCommands(root);
+  const gateNames = gateNamesFor(task, await getDefaultGates(root));
+  const pack = await buildContextPack(`${phase.title}: ${task.title}`, { cwd: root, limit: 5, budgetLines });
+  const formattedPack = formatContextPack(pack, { budgetLines });
+  return { phase, task, gateNames, commands, pack, formattedPack };
+}
+
+function envelopeJson(env: TaskEnvelope): Record<string, unknown> {
+  return {
+    phase: { id: env.phase.id, title: env.phase.title },
+    task: { id: env.task.id, title: env.task.title, scope: env.task.scope, wave: env.task.wave },
+    acceptance: env.task.acceptance,
+    gates: env.gateNames.map((name) => ({ name, command: env.commands[name] ?? null })),
+    contextPack: env.pack,
+  };
+}
+
+function printEnvelope(env: TaskEnvelope): void {
+  console.log(keyValue('Task:', `${env.task.id} — ${env.task.title}`));
+  console.log(keyValue('Phase:', `${env.phase.id} ${env.phase.title}`));
+  if (env.task.scope.length > 0) console.log(keyValue('Scope:', env.task.scope.join(', ')));
+  if (env.task.acceptance.length > 0) {
+    console.log(section('Acceptance:'));
+    for (const a of env.task.acceptance) console.log(`  - ${a.id} [${a.proof ?? 'manual'}] ${a.text}`);
+  }
+  console.log(section('Gates:'));
+  for (const name of env.gateNames) console.log(`  ${name}: ${env.commands[name] ?? '(no command — will be skipped)'}`);
+  console.log(section('Scoped context:'));
+  console.log(env.formattedPack.trimEnd());
+}
+
 export async function runNext(options: NextOptions = {}): Promise<void> {
   const root = options.cwd ?? process.cwd();
   const plan = await loadValidPlan(root);
   if (!plan) return;
+  const budgetLines = parseBudgetLines(options.budgetLines);
+
+  if (options.wave) {
+    await runNextWave(root, plan, budgetLines, Boolean(options.json));
+    return;
+  }
 
   const target = resolveTargetTask(plan);
   if (!target) {
@@ -73,40 +122,69 @@ export async function runNext(options: NextOptions = {}): Promise<void> {
     await writePlan(root, plan);
   }
 
-  const commands = await resolveGateCommands(root);
-  const gateNames = gateNamesFor(task, await getDefaultGates(root));
-  const gateLines = gateNames.map((name) => `  ${name}: ${commands[name] ?? '(no command — will be skipped)'}`);
-
-  const pack = await buildContextPack(`${phase.title}: ${task.title}`, { cwd: root, limit: 5, budgetLines: parseBudgetLines(options.budgetLines) });
-  const formattedPack = formatContextPack(pack, { budgetLines: parseBudgetLines(options.budgetLines) });
+  const env = await buildTaskEnvelope(root, phase, task, budgetLines);
 
   if (options.json) {
-    console.log(JSON.stringify({
-      phase: { id: phase.id, title: phase.title },
-      task: { id: task.id, title: task.title, scope: task.scope, wave: task.wave },
-      acceptance: task.acceptance,
-      gates: gateNames.map((name) => ({ name, command: commands[name] ?? null })),
-      contextPack: pack,
-    }, null, 2));
+    console.log(JSON.stringify(envelopeJson(env), null, 2));
     return;
   }
 
   console.log(brandTitle('agent-flow next'));
-  console.log(keyValue('Task:', `${task.id} — ${task.title}`));
-  console.log(keyValue('Phase:', `${phase.id} ${phase.title}`));
-  if (task.scope.length > 0) console.log(keyValue('Scope:', task.scope.join(', ')));
-  if (task.acceptance.length > 0) {
-    console.log(section('Acceptance:'));
-    for (const a of task.acceptance) console.log(`  - ${a.id} [${a.proof ?? 'manual'}] ${a.text}`);
-  }
-  console.log(section('Gates:'));
-  for (const line of gateLines) console.log(line);
-  console.log(section('Scoped context:'));
-  console.log(formattedPack.trimEnd());
+  printEnvelope(env);
   console.log('');
   console.log(pc.bold('Recommended next:'));
   console.log(`  1) implement, then:  ${pc.cyan(`agent-flow gate --task ${task.id}`)}`);
   console.log(`  2) on green:         ${pc.cyan(`agent-flow advance --task ${task.id}`)}`);
+}
+
+async function runNextWave(root: string, plan: Plan, budgetLines: number, json: boolean): Promise<void> {
+  const wave = nextWave(plan);
+  if (!wave) {
+    console.log(brandTitle('agent-flow next --wave'));
+    console.log(`${statusLabel('ok')} nothing actionable — all tasks are done or blocked`);
+    return;
+  }
+
+  const { batch, heldBack } = conflictFreeBatch(wave.tasks);
+
+  // Mark batched tasks in-flight (idempotent).
+  let changed = false;
+  for (const { task } of batch) {
+    if (task.status === 'pending') {
+      setTaskStatus(plan, task.id, 'active');
+      changed = true;
+    }
+  }
+  if (changed) await writePlan(root, plan);
+
+  const envelopes: TaskEnvelope[] = [];
+  for (const { phase, task } of batch) {
+    envelopes.push(await buildTaskEnvelope(root, phase, task, budgetLines));
+  }
+
+  if (json) {
+    console.log(JSON.stringify({
+      wave: wave.wave,
+      batch: envelopes.map(envelopeJson),
+      heldBack: heldBack.map(({ phase, task, file }) => ({ phase: phase.id, task: task.id, conflictFile: file })),
+    }, null, 2));
+    return;
+  }
+
+  console.log(brandTitle('agent-flow next --wave'));
+  console.log(keyValue('Wave:', `${wave.wave} — ${envelopes.length} parallel task(s)`));
+  envelopes.forEach((env, i) => {
+    console.log(section(`Envelope ${i + 1}/${envelopes.length}`));
+    printEnvelope(env);
+  });
+  if (heldBack.length > 0) {
+    console.log(section('Held back (scope overlap — run in a later round):'));
+    for (const { task, file } of heldBack) console.log(`  - ${task.id} (${task.title}) shares ${file}`);
+  }
+  console.log('');
+  console.log(pc.bold('Recommended:'));
+  console.log('  Spawn one agent per envelope (parallel). After each task:');
+  console.log(`    ${pc.cyan('agent-flow gate --task <id>')} then ${pc.cyan('agent-flow advance --task <id>')}`);
 }
 
 // ---------------------------------------------------------------------------

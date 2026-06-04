@@ -298,3 +298,58 @@ export function nextTask(plan: Plan): { phase: Phase; task: Task } | null {
 
   return null;
 }
+
+/**
+ * The next parallelizable batch: all actionable tasks at the lowest open wave
+ * of the earliest open phase. These are DAG-independent (a dependency must be
+ * in an earlier wave). Scope-overlap is resolved separately by conflictFreeBatch.
+ */
+export function nextWave(plan: Plan): { wave: number; tasks: Array<{ phase: Phase; task: Task }> } | null {
+  const donePhaseIds = new Set(plan.phases.filter((p) => p.status === 'done').map((p) => p.id));
+
+  for (const phase of plan.phases) {
+    if (phase.status === 'done') continue;
+    if (!depsSatisfied(phase.dependsOn, donePhaseIds)) continue;
+
+    const doneTaskIds = new Set(phase.tasks.filter((t) => t.status === 'done').map((t) => t.id));
+    const actionable = phase.tasks
+      .filter((t) => t.status !== 'done' && t.status !== 'blocked')
+      .filter((t) => depsSatisfied(t.dependsOn, doneTaskIds));
+
+    if (actionable.length === 0) continue;
+
+    const wave = Math.min(...actionable.map((t) => t.wave));
+    const tasks = actionable.filter((t) => t.wave === wave).map((task) => ({ phase, task }));
+    return { wave, tasks };
+  }
+
+  return null;
+}
+
+/**
+ * Partition a set of tasks into a conflict-free batch (no shared scope files)
+ * plus tasks held back because their scope overlaps an already-batched task.
+ * Greedy in input order; a held-back task runs in a later fan-out round.
+ */
+export function conflictFreeBatch(
+  items: Array<{ phase: Phase; task: Task }>,
+): {
+  batch: Array<{ phase: Phase; task: Task }>;
+  heldBack: Array<{ phase: Phase; task: Task; file: string }>;
+} {
+  const used = new Set<string>();
+  const batch: Array<{ phase: Phase; task: Task }> = [];
+  const heldBack: Array<{ phase: Phase; task: Task; file: string }> = [];
+
+  for (const item of items) {
+    const conflict = item.task.scope.find((file) => used.has(file));
+    if (conflict) {
+      heldBack.push({ ...item, file: conflict });
+      continue;
+    }
+    for (const file of item.task.scope) used.add(file);
+    batch.push(item);
+  }
+
+  return { batch, heldBack };
+}

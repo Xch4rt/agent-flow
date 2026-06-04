@@ -175,9 +175,10 @@ export function createProgram(): Command {
   program
     .command('next')
     .description('Show the next actionable task with a scoped context pack and gate commands.')
+    .option('--wave', 'Emit envelopes for all parallelizable tasks in the next wave (fan-out)')
     .option('--budget-lines <number>', 'Approximate maximum context-pack lines')
     .option('--json', 'Print structured JSON')
-    .action(async (options: { budgetLines?: string; json?: boolean }) => {
+    .action(async (options: { wave?: boolean; budgetLines?: string; json?: boolean }) => {
       await runNext(options);
     });
 
