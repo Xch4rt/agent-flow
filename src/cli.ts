@@ -19,6 +19,7 @@ import {
   runMemoryValidate,
 } from './commands/memory.js';
 import { runOnboard } from './commands/onboard.js';
+import { runPlanInit, runPlanShow, runPlanValidate } from './commands/plan.js';
 import { runStart } from './commands/start.js';
 import { runStatus } from './commands/status.js';
 import { brandTitle } from './core/terminal-ui.js';
@@ -138,6 +139,35 @@ export function createProgram(): Command {
       allowDuplicate?: boolean;
     }) => {
       await runClose(options);
+    });
+
+  const plan = program
+    .command('plan')
+    .description('Manage the structured orchestration plan (.agent-flow/plan.json).');
+
+  plan
+    .command('init')
+    .description('Create .agent-flow/plan.json, seeded from REQUIREMENTS.md requirement ids.')
+    .option('--force', 'Recreate the plan even if one already exists')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { force?: boolean; json?: boolean }) => {
+      await runPlanInit(options);
+    });
+
+  plan
+    .command('validate')
+    .description('Validate plan structure: requirement coverage, dependency DAG, and waves.')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { json?: boolean }) => {
+      await runPlanValidate(options);
+    });
+
+  plan
+    .command('show')
+    .description('Render plan phases, task status, progress, and the next actionable task.')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { json?: boolean }) => {
+      await runPlanShow(options);
     });
 
   const memory = program.command('memory').description('Inspect local JSONL memory.');

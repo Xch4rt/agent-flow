@@ -8,6 +8,7 @@ import { brandTitle, keyValue, section, statusLabel } from '../core/terminal-ui.
 import { planningFiles } from './doctor.js';
 import { getAdapter, getAdapterIds } from '../adapters/registry.js';
 import { readInstalledAdapters } from '../core/config.js';
+import { computeProgress, loadPlan, nextTask } from '../core/plan.js';
 
 const coreFiles = [
   'AGENTS.md',
@@ -107,6 +108,22 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
   console.log(keyValue('Last onboarded:', onboarding.lastOnboardedAt ?? 'never'));
 
   console.log(keyValue('Planning state modified:', await modifiedAt(statePath)));
+
+  const planResult = await loadPlan(root);
+  console.log(section('Plan:'));
+  if (!planResult.exists) {
+    console.log(keyValue('  Plan:', 'none (run agent-flow plan init)'));
+  } else if (!planResult.valid) {
+    console.log(keyValue('  Plan:', 'invalid (run agent-flow plan validate)'));
+  } else {
+    const progress = computeProgress(planResult.plan);
+    const upNext = nextTask(planResult.plan);
+    console.log(keyValue('  Milestone:', planResult.plan.milestone));
+    console.log(keyValue('  Phases:', `${progress.phasesDone}/${progress.phasesTotal} done`));
+    console.log(keyValue('  Tasks:', `${progress.tasksDone}/${progress.tasksTotal} done (${progress.percent}%)`));
+    console.log(keyValue('  Next:', upNext ? `${upNext.phase.id}/${upNext.task.id} — ${upNext.task.title}` : 'nothing actionable'));
+  }
+
   console.log(section('Memory files:'));
 
   for (const file of memoryFiles) {
