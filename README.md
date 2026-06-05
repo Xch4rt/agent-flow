@@ -174,7 +174,11 @@ agent-flow review record --phase id --verdict pass|fail [--notes "..."] [--json]
 
 Agent Flow can drive a project as a deterministic state machine while keeping the
 continuity layer. It never spawns agents itself — it emits envelopes and runs
-gates; your agent does the work. Orchestration overhead stays near zero because
+gates; your agent does the work.
+
+Every command targets the agent-flow project at the current directory, the
+nearest ancestor project (so you can run from any subdirectory), or a path you
+pass with the global `--root <dir>` flag (or the `AGENT_FLOW_ROOT` env var). Orchestration overhead stays near zero because
 each step gets a scoped context pack instead of the whole repo.
 
 The plan lives in `.agent-flow/plan.json` (canonical, committed). It groups work
