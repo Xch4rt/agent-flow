@@ -6,6 +6,7 @@ import { detectProject } from '../core/detect-project.js';
 import { formatInvalidMemoryEntry, getInvalidMemoryEntries, getMemoryFiles, readMemoryEntries } from '../core/jsonl-memory.js';
 import { getMemoryIndexState, queryMemoryIndex, validateMemoryIndexSchema } from '../core/memory-index.js';
 import { getOnboardingState } from '../core/onboard.js';
+import { loadPlan, parseRequirementUniverse, validatePlanStructure } from '../core/plan.js';
 import { brandTitle, section, statusLabel } from '../core/terminal-ui.js';
 import { getAdapter, type AgentId } from '../adapters/registry.js';
 import { readInstalledAdapters } from '../core/config.js';
@@ -127,6 +128,25 @@ export async function runDoctor(options: { cwd?: string } = {}): Promise<void> {
       ok: onboarding.hasOnboardingEvent,
       detail: onboarding.hasOnboardingEvent ? undefined : 'run agent-flow onboard',
     });
+  }
+
+  const planLoaded = await loadPlan(root);
+  if (planLoaded.exists) {
+    if (!planLoaded.valid) {
+      checks.push({ label: 'orchestration plan', ok: false, detail: 'invalid plan.json; run agent-flow plan validate' });
+    } else {
+      const universe = await parseRequirementUniverse(root);
+      const validation = validatePlanStructure(planLoaded.plan, universe);
+      checks.push({
+        label: 'orchestration plan',
+        ok: validation.ok,
+        detail: validation.ok
+          ? validation.warnings.length > 0
+            ? `${validation.warnings.length} warning(s); see agent-flow plan validate`
+            : undefined
+          : `${validation.errors.length} error(s); run agent-flow plan validate`,
+      });
+    }
   }
 
   if (memoryIndexState.exists) {

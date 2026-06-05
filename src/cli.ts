@@ -19,9 +19,13 @@ import {
   runMemoryValidate,
 } from './commands/memory.js';
 import { runOnboard } from './commands/onboard.js';
+import { runAdvance, runGateCommand, runNext } from './commands/orchestrate.js';
+import { runPlanInit, runPlanRender, runPlanShow, runPlanValidate } from './commands/plan.js';
+import { runReviewEmit, runReviewRecord } from './commands/review.js';
 import { runStart } from './commands/start.js';
 import { runStatus } from './commands/status.js';
 import { brandTitle } from './core/terminal-ui.js';
+import { resolveRoot } from './core/project-root.js';
 import { runDashboard } from './dashboard/dashboard.js';
 
 function readPackageVersion(): string {
@@ -38,7 +42,27 @@ export function createProgram(): Command {
     .name('agent-flow')
     .description('Local workflow and memory layer for AI coding agents.')
     .version(readPackageVersion())
+    .option('--root <dir>', 'Operate on the agent-flow project at <dir> (default: nearest ancestor project, else cwd)')
     .addHelpText('beforeAll', () => `${brandTitle('agent-flow')}\n`);
+
+  // Resolve the effective project root once, before any subcommand action, and
+  // chdir into it so every command (which reads process.cwd()) targets it.
+  // `init` is exempt from upward-discovery so a fresh dir is not redirected to
+  // an ancestor project.
+  program.hook('preAction', (thisCommand, actionCommand) => {
+    const rootFlag = thisCommand.opts().root as string | undefined;
+    const env = process.env.AGENT_FLOW_ROOT;
+    const isInit = actionCommand.name() === 'init';
+    // Fresh `init` with no explicit target stays in cwd (no upward discovery).
+    if (isInit && !rootFlag && !env) return;
+    const root = isInit
+      ? path.resolve(rootFlag ?? env ?? process.cwd())
+      : resolveRoot({ rootFlag, env });
+    if (!fs.existsSync(root)) {
+      throw new Error(`--root path does not exist: ${root}`);
+    }
+    process.chdir(root);
+  });
 
   program
     .command('init')
@@ -138,6 +162,100 @@ export function createProgram(): Command {
       allowDuplicate?: boolean;
     }) => {
       await runClose(options);
+    });
+
+  const plan = program
+    .command('plan')
+    .description('Manage the structured orchestration plan (.agent-flow/plan.json).');
+
+  plan
+    .command('init')
+    .description('Create .agent-flow/plan.json, seeded from REQUIREMENTS.md requirement ids.')
+    .option('--scaffold', 'Seed draft phases grouped by requirement prefix')
+    .option('--force', 'Recreate the plan even if one already exists')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { scaffold?: boolean; force?: boolean; json?: boolean }) => {
+      await runPlanInit(options);
+    });
+
+  plan
+    .command('validate')
+    .description('Validate plan structure: requirement coverage, dependency DAG, and waves.')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { json?: boolean }) => {
+      await runPlanValidate(options);
+    });
+
+  plan
+    .command('show')
+    .description('Render plan phases, task status, progress, and the next actionable task.')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { json?: boolean }) => {
+      await runPlanShow(options);
+    });
+
+  plan
+    .command('render')
+    .description('Regenerate .planning/ROADMAP.md as a human view of plan.json.')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { json?: boolean }) => {
+      await runPlanRender(options);
+    });
+
+  program
+    .command('next')
+    .description('Show the next actionable task with a scoped context pack and gate commands.')
+    .option('--wave', 'Emit envelopes for all parallelizable tasks in the next wave (fan-out)')
+    .option('--peek', 'Do not mark the task active (no state mutation)')
+    .option('--budget-lines <number>', 'Approximate maximum context-pack lines')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { wave?: boolean; peek?: boolean; budgetLines?: string; json?: boolean }) => {
+      await runNext(options);
+    });
+
+  program
+    .command('gate')
+    .description('Run the gate commands (tests/typecheck/...) for a task and cache the result.')
+    .option('--task <id>', 'Task id to gate (defaults to the next actionable task)')
+    .option('--strict', 'Fail (not skip) a gate that has no resolved command')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { task?: string; strict?: boolean; json?: boolean }) => {
+      await runGateCommand(options);
+    });
+
+  program
+    .command('advance')
+    .description('Mark a task done if its gate is green, append memory, and move the cursor.')
+    .option('--task <id>', 'Task id to advance (defaults to the next actionable task)')
+    .option('--gate', 'Run gates now instead of requiring a cached green result')
+    .option('--strict', 'With --gate, fail a gate that has no resolved command')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { task?: string; gate?: boolean; strict?: boolean; json?: boolean }) => {
+      await runAdvance(options);
+    });
+
+  const review = program
+    .command('review')
+    .description('Tier-1 independent phase review (emit a review envelope; record the verdict).');
+
+  review
+    .command('emit')
+    .description('Emit a review envelope for a phase (briefing for an independent reviewer).')
+    .requiredOption('--phase <id>', 'Phase id to review')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { phase: string; json?: boolean }) => {
+      await runReviewEmit(options);
+    });
+
+  review
+    .command('record')
+    .description('Record an independent reviewer verdict, keyed to the current code.')
+    .requiredOption('--phase <id>', 'Phase id reviewed')
+    .requiredOption('--verdict <verdict>', 'pass or fail')
+    .option('--notes <notes>', 'Reviewer notes')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { phase: string; verdict: string; notes?: string; json?: boolean }) => {
+      await runReviewRecord(options);
     });
 
   const memory = program.command('memory').description('Inspect local JSONL memory.');

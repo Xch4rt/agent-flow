@@ -1,0 +1,427 @@
+import path from 'node:path';
+import fs from 'fs-extra';
+import { parsePlan, type Phase, type Plan, type PlanParseError, type Task } from './plan-schema.js';
+
+export const PLAN_RELATIVE_PATH = path.join('.agent-flow', 'plan.json');
+
+export function planPath(root: string): string {
+  return path.join(root, PLAN_RELATIVE_PATH);
+}
+
+export type LoadPlanResult =
+  | { exists: false }
+  | { exists: true; valid: false; errors: PlanParseError[] }
+  | { exists: true; valid: true; plan: Plan };
+
+export async function loadPlan(root: string): Promise<LoadPlanResult> {
+  const file = planPath(root);
+  if (!(await fs.pathExists(file))) return { exists: false };
+
+  let raw: unknown;
+  try {
+    raw = await fs.readJson(file);
+  } catch (err) {
+    return {
+      exists: true,
+      valid: false,
+      errors: [{ path: 'plan', message: `invalid JSON: ${(err as Error).message}` }],
+    };
+  }
+
+  const parsed = parsePlan(raw);
+  if (!parsed.ok) return { exists: true, valid: false, errors: parsed.errors };
+  return { exists: true, valid: true, plan: parsed.plan };
+}
+
+export async function writePlan(root: string, plan: Plan, now = new Date()): Promise<void> {
+  const file = planPath(root);
+  await fs.ensureDir(path.dirname(file));
+  await fs.writeJson(file, { ...plan, updatedAt: now.toISOString() }, { spaces: 2 });
+}
+
+export function emptyPlan(now = new Date(), milestone = 'v1'): Plan {
+  return {
+    schemaVersion: 1,
+    milestone,
+    createdAt: now.toISOString(),
+    cursor: { phase: null, task: null },
+    phases: [],
+  };
+}
+
+/**
+ * Draft plan grouped by requirement prefix (SHORT-*, REDIR-*, ...), one phase
+ * per prefix with a single placeholder task. A starting point to refine — every
+ * requirement is mapped so `plan validate` passes coverage immediately.
+ */
+export function scaffoldPlanFromRequirements(universe: string[], now = new Date()): Plan {
+  const groups = new Map<string, string[]>();
+  for (const req of universe) {
+    const prefix = req.split('-')[0];
+    if (!groups.has(prefix)) groups.set(prefix, []);
+    groups.get(prefix)!.push(req);
+  }
+
+  const phases: Phase[] = [...groups.entries()].map(([prefix, requirements], index) => {
+    const id = String(index + 1);
+    return {
+      id,
+      title: `${prefix} (draft — rename)`,
+      goal: '',
+      requirements,
+      dependsOn: [],
+      status: 'pending' as const,
+      tasks: [
+        {
+          id: `${id}.1`,
+          title: 'draft task — split and define',
+          scope: [],
+          wave: 1,
+          dependsOn: [],
+          status: 'pending' as const,
+          gates: [],
+          acceptance: [],
+        },
+      ],
+    };
+  });
+
+  const plan: Plan = { ...emptyPlan(now), phases };
+  recomputeCursor(plan);
+  return plan;
+}
+
+/** Extract the requirement-id universe from REQUIREMENTS.md (deterministic, no LLM). */
+export async function parseRequirementUniverse(root: string): Promise<string[]> {
+  const file = path.join(root, '.planning', 'REQUIREMENTS.md');
+  if (!(await fs.pathExists(file))) return [];
+  const text = await fs.readFile(file, 'utf8');
+  const ids = new Set<string>();
+  const re = /\b[A-Z][A-Z0-9]*-\d+\b/g;
+  for (const match of text.matchAll(re)) ids.add(match[0]);
+  return [...ids].sort();
+}
+
+// ---------------------------------------------------------------------------
+// Structural validation (errors block; warnings inform)
+// ---------------------------------------------------------------------------
+
+export type PlanValidation = {
+  ok: boolean;
+  errors: string[];
+  warnings: string[];
+  coverage: { unmapped: string[]; unknown: string[]; duplicated: string[] };
+};
+
+/** Kahn's algorithm: returns node ids that remain in a cycle (best-effort). */
+function nodesInCycle(nodes: string[], edges: Map<string, string[]>): string[] {
+  const indeg = new Map<string, number>();
+  for (const n of nodes) indeg.set(n, 0);
+  for (const n of nodes) {
+    for (const dep of edges.get(n) ?? []) {
+      // edge dep -> n (dep must come first); n depends on dep
+      if (indeg.has(dep)) indeg.set(n, (indeg.get(n) ?? 0) + 1);
+    }
+  }
+  const queue = nodes.filter((n) => (indeg.get(n) ?? 0) === 0);
+  const removed = new Set<string>();
+  while (queue.length > 0) {
+    const n = queue.shift() as string;
+    removed.add(n);
+    for (const m of nodes) {
+      if (removed.has(m)) continue;
+      if ((edges.get(m) ?? []).includes(n)) {
+        indeg.set(m, (indeg.get(m) ?? 0) - 1);
+        if ((indeg.get(m) ?? 0) === 0) queue.push(m);
+      }
+    }
+  }
+  return nodes.filter((n) => !removed.has(n));
+}
+
+function findDuplicates(ids: string[]): string[] {
+  const seen = new Set<string>();
+  const dups = new Set<string>();
+  for (const id of ids) {
+    if (seen.has(id)) dups.add(id);
+    seen.add(id);
+  }
+  return [...dups];
+}
+
+export function validatePlanStructure(plan: Plan, universe: string[]): PlanValidation {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // --- id uniqueness ---
+  const phaseIds = plan.phases.map((p) => p.id);
+  for (const dup of findDuplicates(phaseIds)) errors.push(`duplicate phase id: ${dup}`);
+
+  for (const phase of plan.phases) {
+    const taskIds = phase.tasks.map((t) => t.id);
+    for (const dup of findDuplicates(taskIds)) {
+      errors.push(`duplicate task id in phase ${phase.id}: ${dup}`);
+    }
+  }
+
+  // --- dangling phase dependsOn ---
+  const phaseIdSet = new Set(phaseIds);
+  for (const phase of plan.phases) {
+    for (const dep of phase.dependsOn) {
+      if (!phaseIdSet.has(dep)) errors.push(`phase ${phase.id} depends on unknown phase ${dep}`);
+      if (dep === phase.id) errors.push(`phase ${phase.id} depends on itself`);
+    }
+  }
+
+  // --- phase DAG cycles ---
+  const phaseEdges = new Map<string, string[]>(plan.phases.map((p) => [p.id, p.dependsOn]));
+  const phaseCycle = nodesInCycle(phaseIds, phaseEdges);
+  if (phaseCycle.length > 0) errors.push(`phase dependency cycle: ${phaseCycle.join(' -> ')}`);
+
+  // --- per-phase task validation ---
+  for (const phase of plan.phases) {
+    const taskIdSet = new Set(phase.tasks.map((t) => t.id));
+    const taskWave = new Map(phase.tasks.map((t) => [t.id, t.wave]));
+
+    for (const task of phase.tasks) {
+      for (const dep of task.dependsOn) {
+        if (!taskIdSet.has(dep)) {
+          errors.push(`task ${phase.id}/${task.id} depends on unknown task ${dep}`);
+          continue;
+        }
+        if (dep === task.id) errors.push(`task ${phase.id}/${task.id} depends on itself`);
+        // wave-order: a dependency should run in an earlier wave
+        const depWave = taskWave.get(dep);
+        if (depWave !== undefined && depWave >= task.wave) {
+          warnings.push(
+            `task ${phase.id}/${task.id} (wave ${task.wave}) depends on ${dep} (wave ${depWave}); dependency is not in an earlier wave`,
+          );
+        }
+      }
+    }
+
+    const taskCycle = nodesInCycle(
+      phase.tasks.map((t) => t.id),
+      new Map(phase.tasks.map((t) => [t.id, t.dependsOn])),
+    );
+    if (taskCycle.length > 0) {
+      errors.push(`task dependency cycle in phase ${phase.id}: ${taskCycle.join(' -> ')}`);
+    }
+  }
+
+  // --- requirement coverage ---
+  const mapped = new Map<string, number>();
+  for (const phase of plan.phases) {
+    for (const req of phase.requirements) mapped.set(req, (mapped.get(req) ?? 0) + 1);
+  }
+  const universeSet = new Set(universe);
+  const unmapped = universe.filter((req) => !mapped.has(req));
+  const unknown = [...mapped.keys()].filter((req) => !universeSet.has(req)).sort();
+  const duplicated = [...mapped.entries()].filter(([, count]) => count > 1).map(([req]) => req).sort();
+
+  if (universe.length > 0 && unmapped.length > 0) {
+    warnings.push(`unmapped requirements (${unmapped.length}): ${unmapped.join(', ')}`);
+  }
+  if (unknown.length > 0) {
+    warnings.push(`requirements not found in REQUIREMENTS.md (${unknown.length}): ${unknown.join(', ')}`);
+  }
+  for (const req of duplicated) warnings.push(`requirement ${req} mapped to more than one phase`);
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    coverage: { unmapped, unknown, duplicated },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Query helpers (used by status now; by `next`/`advance` in Phase B)
+// ---------------------------------------------------------------------------
+
+export type Progress = {
+  phasesTotal: number;
+  phasesDone: number;
+  tasksTotal: number;
+  tasksDone: number;
+  percent: number;
+};
+
+export function computeProgress(plan: Plan): Progress {
+  const phasesTotal = plan.phases.length;
+  const phasesDone = plan.phases.filter((p) => p.status === 'done').length;
+  let tasksTotal = 0;
+  let tasksDone = 0;
+  for (const phase of plan.phases) {
+    for (const task of phase.tasks) {
+      tasksTotal += 1;
+      if (task.status === 'done') tasksDone += 1;
+    }
+  }
+  const percent = tasksTotal === 0 ? 0 : Math.round((tasksDone / tasksTotal) * 100);
+  return { phasesTotal, phasesDone, tasksTotal, tasksDone, percent };
+}
+
+/** Render plan.json as a human-readable ROADMAP.md (a generated view). */
+export function renderRoadmap(plan: Plan): string {
+  const progress = computeProgress(plan);
+  const lines: string[] = [
+    '# Roadmap',
+    '',
+    '> Generated from `.agent-flow/plan.json` by `agent-flow plan render`. Edit the plan, not this file.',
+    '',
+    `**Milestone:** ${plan.milestone}`,
+    `**Progress:** ${progress.tasksDone}/${progress.tasksTotal} tasks (${progress.percent}%), ${progress.phasesDone}/${progress.phasesTotal} phases`,
+    '',
+  ];
+
+  for (const phase of plan.phases) {
+    lines.push(`## Phase ${phase.id}: ${phase.title} — ${phase.status}`);
+    if (phase.goal) lines.push(`**Goal:** ${phase.goal}`);
+    if (phase.requirements.length > 0) lines.push(`**Requirements:** ${phase.requirements.join(', ')}`);
+    if (phase.dependsOn.length > 0) lines.push(`**Depends on:** ${phase.dependsOn.join(', ')}`);
+    lines.push('');
+    for (const task of phase.tasks) {
+      const box = task.status === 'done' ? '[x]' : '[ ]';
+      lines.push(`- ${box} ${task.id} (wave ${task.wave}) ${task.title} — ${task.status}`);
+      for (const a of task.acceptance) lines.push(`  - ${a.id} [${a.proof ?? 'manual'}]: ${a.text}`);
+    }
+    lines.push('');
+  }
+
+  return `${lines.join('\n').trimEnd()}\n`;
+}
+
+export function phaseProgress(phase: Phase): { done: number; total: number } {
+  return {
+    done: phase.tasks.filter((t) => t.status === 'done').length,
+    total: phase.tasks.length,
+  };
+}
+
+function depsSatisfied(deps: string[], doneIds: Set<string>): boolean {
+  return deps.every((d) => doneIds.has(d));
+}
+
+/** Find a task by id across all phases. */
+export function findTask(plan: Plan, taskId: string): { phase: Phase; task: Task } | null {
+  for (const phase of plan.phases) {
+    const task = phase.tasks.find((t) => t.id === taskId);
+    if (task) return { phase, task };
+  }
+  return null;
+}
+
+/** Resolve the target task: an explicit id, else the next actionable task. */
+export function resolveTargetTask(
+  plan: Plan,
+  taskId?: string,
+): { phase: Phase; task: Task } | null {
+  if (taskId) return findTask(plan, taskId);
+  return nextTask(plan);
+}
+
+function recomputePhaseStatus(phase: Phase): void {
+  if (phase.tasks.length === 0) return;
+  if (phase.tasks.every((t) => t.status === 'done')) {
+    phase.status = 'done';
+  } else if (phase.tasks.some((t) => t.status === 'done' || t.status === 'active')) {
+    phase.status = 'active';
+  } else {
+    phase.status = 'pending';
+  }
+}
+
+/** Mutates the plan in place: sets a task status and recomputes its phase + cursor. */
+export function setTaskStatus(plan: Plan, taskId: string, status: Task['status']): boolean {
+  const found = findTask(plan, taskId);
+  if (!found) return false;
+  found.task.status = status;
+  recomputePhaseStatus(found.phase);
+  recomputeCursor(plan);
+  return true;
+}
+
+/** Mutates the plan in place: point the cursor at the next actionable task (or null). */
+export function recomputeCursor(plan: Plan): void {
+  const next = nextTask(plan);
+  plan.cursor = next ? { phase: next.phase.id, task: next.task.id } : { phase: null, task: null };
+}
+
+/**
+ * The next actionable task: earliest phase whose phase-deps are done, then the
+ * lowest-wave pending task whose task-deps are done. Deterministic, no LLM.
+ */
+export function nextTask(plan: Plan): { phase: Phase; task: Task } | null {
+  const donePhaseIds = new Set(plan.phases.filter((p) => p.status === 'done').map((p) => p.id));
+
+  for (const phase of plan.phases) {
+    if (phase.status === 'done') continue;
+    if (!depsSatisfied(phase.dependsOn, donePhaseIds)) continue;
+
+    const doneTaskIds = new Set(phase.tasks.filter((t) => t.status === 'done').map((t) => t.id));
+    const candidates = phase.tasks
+      .filter((t) => t.status !== 'done' && t.status !== 'blocked')
+      .filter((t) => depsSatisfied(t.dependsOn, doneTaskIds))
+      .sort((a, b) => a.wave - b.wave);
+
+    if (candidates.length > 0) return { phase, task: candidates[0] };
+  }
+
+  return null;
+}
+
+/**
+ * The next parallelizable batch: all actionable tasks at the lowest open wave
+ * of the earliest open phase. These are DAG-independent (a dependency must be
+ * in an earlier wave). Scope-overlap is resolved separately by conflictFreeBatch.
+ */
+export function nextWave(plan: Plan): { wave: number; tasks: Array<{ phase: Phase; task: Task }> } | null {
+  const donePhaseIds = new Set(plan.phases.filter((p) => p.status === 'done').map((p) => p.id));
+
+  for (const phase of plan.phases) {
+    if (phase.status === 'done') continue;
+    if (!depsSatisfied(phase.dependsOn, donePhaseIds)) continue;
+
+    const doneTaskIds = new Set(phase.tasks.filter((t) => t.status === 'done').map((t) => t.id));
+    const actionable = phase.tasks
+      .filter((t) => t.status !== 'done' && t.status !== 'blocked')
+      .filter((t) => depsSatisfied(t.dependsOn, doneTaskIds));
+
+    if (actionable.length === 0) continue;
+
+    const wave = Math.min(...actionable.map((t) => t.wave));
+    const tasks = actionable.filter((t) => t.wave === wave).map((task) => ({ phase, task }));
+    return { wave, tasks };
+  }
+
+  return null;
+}
+
+/**
+ * Partition a set of tasks into a conflict-free batch (no shared scope files)
+ * plus tasks held back because their scope overlaps an already-batched task.
+ * Greedy in input order; a held-back task runs in a later fan-out round.
+ */
+export function conflictFreeBatch(
+  items: Array<{ phase: Phase; task: Task }>,
+): {
+  batch: Array<{ phase: Phase; task: Task }>;
+  heldBack: Array<{ phase: Phase; task: Task; file: string }>;
+} {
+  const used = new Set<string>();
+  const batch: Array<{ phase: Phase; task: Task }> = [];
+  const heldBack: Array<{ phase: Phase; task: Task; file: string }> = [];
+
+  for (const item of items) {
+    const conflict = item.task.scope.find((file) => used.has(file));
+    if (conflict) {
+      heldBack.push({ ...item, file: conflict });
+      continue;
+    }
+    for (const file of item.task.scope) used.add(file);
+    batch.push(item);
+  }
+
+  return { batch, heldBack };
+}
