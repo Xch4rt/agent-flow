@@ -4,6 +4,7 @@ import fs from 'fs-extra';
 import { execa } from 'execa';
 import { readConfig } from './config.js';
 import { detectProject } from './detect-project.js';
+import { getSmokeConfig, runSmoke } from './smoke.js';
 
 export type GateResult = {
   name: string;
@@ -55,6 +56,24 @@ export async function runGate(
   options: RunGateOptions = {},
 ): Promise<GateResult> {
   const command = commands[name];
+
+  // Built-in smoke gate: boot the app and probe it for real (unless a shell
+  // command override is configured for "smoke").
+  if (name === 'smoke' && !command) {
+    const smokeConfig = await getSmokeConfig(root);
+    if (smokeConfig) {
+      const result = await runSmoke(root, smokeConfig);
+      return {
+        name,
+        command: '(built-in smoke)',
+        ok: result.ok,
+        exitCode: result.ok ? 0 : 1,
+        outputTail: [result.summary, ...result.steps.map((s) => `  ${s.ok ? 'ok' : 'FAIL'} ${s.name}: ${s.detail}`)].join('\n'),
+        skipped: false,
+      };
+    }
+  }
+
   if (!command) {
     return {
       name,

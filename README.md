@@ -198,6 +198,26 @@ resolved from detected package scripts by default. `advance` is a hard gate: it
 refuses unless the gates are green for the current code (a worktree content
 signature ties the cached result to the exact code).
 
+There is a built-in **smoke** gate that boots the app and probes it over HTTP —
+catching breakage that `inject`-style tests miss (e.g. a wrong start entrypoint).
+Add `"smoke"` to a task's gates and configure it under `orchestration.smoke`:
+
+```json
+{
+  "orchestration": {
+    "smoke": {
+      "start": "npm start",
+      "env": { "PORT": "4999" },
+      "baseUrl": "http://localhost:4999",
+      "readyPath": "/",
+      "probes": [
+        { "name": "redirect", "method": "GET", "path": "/abc", "status": [301, 404] }
+      ]
+    }
+  }
+}
+```
+
 Tiered rigor (opt-in, set `orchestration.review.tier`):
 
 - Tier 0 (default): deterministic gates only — zero added agent cost.
