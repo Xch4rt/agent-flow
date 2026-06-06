@@ -70,6 +70,22 @@ describe('init --codex', () => {
     });
   });
 
+  it('seeds a neutral REQUIREMENTS.md template (not agent-flow describing itself)', async () => {
+    await runInit({ codex: true, cwd: tmpDir });
+
+    const requirements = await fs.readFile(path.join(tmpDir, '.planning/REQUIREMENTS.md'), 'utf8');
+    // Neutral: must not contain agent-flow's own product spec.
+    expect(requirements).not.toContain('Codex-first');
+    expect(requirements).not.toContain('JSONL');
+    // Instructive: teaches the requirement-id format the orchestration flow consumes.
+    expect(requirements).toContain('<CATEGORY>-<number>');
+    expect(requirements).toContain('plan init');
+    expect(requirements).toContain('plan validate');
+    // Scaffold-safe: placeholder example ids collapse to a single obvious draft group.
+    const ids = new Set([...requirements.matchAll(/\b[A-Z][A-Z0-9]*-\d+\b/g)].map((m) => m[0].split('-')[0]));
+    expect([...ids]).toEqual(['CORE']);
+  });
+
   it('does not overwrite existing files without --force', async () => {
     await fs.ensureDir(path.join(tmpDir, '.planning'));
     await fs.writeFile(path.join(tmpDir, 'AGENTS.md'), 'custom agents file');

@@ -74,18 +74,19 @@ ${detection.packageManager}
 export function requirementsTemplate(): string {
   return `# Requirements
 
-## Product
+> Define what this project must do. Give each requirement an id of the form
+> \`<CATEGORY>-<number>\` (uppercase category + number) — \`agent-flow plan init
+> --scaffold\` seeds phases from these ids, and \`agent-flow plan validate\`
+> checks coverage against them.
 
-- Provide a Codex-first continuity workflow for software projects.
-- Keep JSONL memory file-based, readable, and versionable.
-- Use SQLite only as an internal generated query index.
-- Help agents resume context without manual repo explanations.
+## Example (replace with your own)
+
+- **CORE-01**: <the first capability this project must deliver>
+- **CORE-02**: <another specific, testable capability>
 
 ## Non-Goals
 
-- No MCP server in the MVP.
-- No embeddings in the MVP.
-- No user-managed database in the MVP.
+- <explicit exclusion — and why it is out of scope>
 `;
 }
 
