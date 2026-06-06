@@ -37,6 +37,8 @@ export const taskSchema = z.object({
   /** Named gates (resolved to shell commands from config/detection). */
   gates: z.array(z.string().trim().min(1)).default([]),
   acceptance: z.array(acceptanceSchema).default([]),
+  /** Waived hardening criteria ("pack/criterion") or whole packs ("pack"). */
+  waives: z.array(z.string().trim().min(1)).default([]),
 });
 export type Task = z.infer<typeof taskSchema>;
 

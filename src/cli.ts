@@ -20,7 +20,7 @@ import {
 } from './commands/memory.js';
 import { runOnboard } from './commands/onboard.js';
 import { runAdvance, runGateCommand, runNext } from './commands/orchestrate.js';
-import { runPlanInit, runPlanRender, runPlanShow, runPlanValidate } from './commands/plan.js';
+import { runPlanHarden, runPlanInit, runPlanRender, runPlanShow, runPlanValidate } from './commands/plan.js';
 import { runReviewEmit, runReviewRecord } from './commands/review.js';
 import { runStart } from './commands/start.js';
 import { runStatus } from './commands/status.js';
@@ -200,6 +200,16 @@ export function createProgram(): Command {
     .option('--json', 'Print structured JSON')
     .action(async (options: { json?: boolean }) => {
       await runPlanRender(options);
+    });
+
+  plan
+    .command('harden')
+    .description('Emit a domain-hardening prompt for one agent; --apply merges its proposed acceptance criteria.')
+    .option('--apply', 'Apply hardener JSON output to plan.json (requires --from-json)')
+    .option('--from-json <file>', 'Read hardener JSON from a file, or "-" for stdin')
+    .option('--json', 'Print structured JSON (envelope includes hardenerPrompt)')
+    .action(async (options: { apply?: boolean; fromJson?: string; json?: boolean }) => {
+      await runPlanHarden(options);
     });
 
   program
