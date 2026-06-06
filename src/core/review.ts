@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'fs-extra';
 import { execa } from 'execa';
 import { readConfig } from './config.js';
+import { hardeningGaps } from './packs.js';
 import type { Phase, Plan } from './plan-schema.js';
 
 /**
@@ -77,6 +78,8 @@ export type ReviewEnvelope = {
   scopeFiles: string[];
   recentCommits: string[];
   rubric: string[];
+  /** Domain hardening criteria (from pitfall packs) no acceptance covers. */
+  hardeningExpectations: Array<{ taskId: string; key: string; text: string }>;
   signature: string;
 };
 
@@ -86,6 +89,7 @@ const REVIEW_RUBRIC = [
   'Correctness risks and edge cases (error paths, races, boundaries) are handled.',
   'Tests genuinely exercise the acceptance criteria, not just happy paths.',
   'No security, data, or compatibility regressions introduced.',
+  'Industry-standard hardening for the code’s domain is present. Missing table-stakes hardening (atomic writes, input caps, cache headers on redirects, crypto-grade randomness, ...) is a BLOCKING finding — verdict "fail" — unless the plan explicitly waives it.',
 ];
 
 /** A self-contained prompt for an independent reviewer agent to act on. */
@@ -101,6 +105,13 @@ export function buildReviewerPrompt(envelope: ReviewEnvelope): string {
     `Scope files to read: ${envelope.scopeFiles.join(', ') || '(none listed)'}`,
     envelope.recentCommits.length > 0 ? `Recent commits:\n${envelope.recentCommits.map((c) => `  ${c}`).join('\n')}` : '',
     '',
+    ...(envelope.hardeningExpectations.length > 0
+      ? [
+          'Domain hardening expectations — NO acceptance criterion covers these; verify them in the actual code anyway and treat a miss as blocking:',
+          ...envelope.hardeningExpectations.map((h) => `  - [${h.taskId}] ${h.key}: ${h.text}`),
+          '',
+        ]
+      : []),
     'Apply this rubric:',
     ...envelope.rubric.map((r) => `  - ${r}`),
     '',
@@ -144,12 +155,17 @@ export async function buildReviewEnvelope(
     ? log.stdout.trim().split('\n')
     : [];
 
+  const hardeningExpectations = phase.tasks.flatMap((task) =>
+    hardeningGaps(task).map((gap) => ({ taskId: task.id, key: gap.key, text: gap.text })),
+  );
+
   return {
     phase: { id: phase.id, title: phase.title, goal: phase.goal, requirements: phase.requirements },
     acceptance,
     scopeFiles: phaseScopeFiles(phase),
     recentCommits,
     rubric: REVIEW_RUBRIC,
+    hardeningExpectations,
     signature,
   };
 }

@@ -3,6 +3,13 @@ import pc from 'picocolors';
 import { brandTitle, keyValue, section, statusLabel } from '../core/terminal-ui.js';
 import path from 'node:path';
 import {
+  applyHardenAdditions,
+  buildHardenEnvelope,
+  buildHardenerPrompt,
+  parseHardenAdditions,
+} from '../core/harden.js';
+import { extractJson, readJsonSource } from '../core/json-input.js';
+import {
   computeProgress,
   emptyPlan,
   loadPlan,
@@ -20,6 +27,7 @@ export type PlanInitOptions = { cwd?: string; force?: boolean; scaffold?: boolea
 export type PlanValidateOptions = { cwd?: string; json?: boolean };
 export type PlanShowOptions = { cwd?: string; json?: boolean };
 export type PlanRenderOptions = { cwd?: string; json?: boolean };
+export type PlanHardenOptions = { cwd?: string; apply?: boolean; fromJson?: string; json?: boolean };
 
 export async function runPlanInit(options: PlanInitOptions = {}): Promise<void> {
   const root = options.cwd ?? process.cwd();
@@ -130,6 +138,80 @@ export async function runPlanValidate(options: PlanValidateOptions = {}): Promis
   }
 
   if (!validation.ok) process.exitCode = 1;
+}
+
+export async function runPlanHarden(options: PlanHardenOptions = {}): Promise<void> {
+  const root = options.cwd ?? process.cwd();
+  const loaded = await loadPlan(root);
+
+  if (!loaded.exists) {
+    console.log(`${statusLabel('fail')} no plan found. Run: agent-flow plan init`);
+    process.exitCode = 1;
+    return;
+  }
+  if (!loaded.valid) {
+    console.log(`${statusLabel('fail')} plan is invalid. Run: agent-flow plan validate`);
+    process.exitCode = 1;
+    return;
+  }
+
+  // --apply --from-json: ingest a hardener's proposed criteria into plan.json.
+  if (options.apply) {
+    if (!options.fromJson) {
+      console.log(`${statusLabel('fail')} --apply requires --from-json <file|->`);
+      process.exitCode = 1;
+      return;
+    }
+    let parsed;
+    try {
+      parsed = parseHardenAdditions(extractJson(await readJsonSource(options.fromJson)));
+    } catch (err) {
+      console.log(`${statusLabel('fail')} could not read hardener output: ${(err as Error).message}`);
+      process.exitCode = 1;
+      return;
+    }
+    if (!parsed.ok) {
+      console.log(`${statusLabel('fail')} invalid hardener output: ${parsed.error}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    const result = applyHardenAdditions(loaded.plan, parsed.additions);
+    if (result.applied.length > 0) await writePlan(root, loaded.plan);
+
+    if (options.json) {
+      console.log(JSON.stringify({ ...result, notes: parsed.notes }, null, 2));
+      return;
+    }
+
+    console.log(brandTitle('agent-flow plan harden (apply)'));
+    if (parsed.notes) console.log(keyValue('Notes:', parsed.notes));
+    for (const item of result.applied) {
+      console.log(`${statusLabel('ok')} task ${item.task} + ${item.id} [${item.proof ?? 'manual'}]: ${item.text}`);
+    }
+    for (const item of result.skipped) {
+      console.log(`${statusLabel('warning')} skipped (${item.reason}): task ${item.task} — ${item.text}`);
+    }
+    if (result.applied.length === 0 && result.skipped.length === 0) {
+      console.log(`${statusLabel('ok')} no additions proposed — plan already hardened`);
+    }
+    if (result.applied.length > 0) {
+      console.log('');
+      console.log(`Criteria added. Re-check coverage: ${pc.cyan('agent-flow plan validate')}`);
+    }
+    return;
+  }
+
+  // Default: emit the spawn-ready hardener prompt (pipe it to one agent).
+  const envelope = buildHardenEnvelope(loaded.plan);
+  const prompt = buildHardenerPrompt(envelope);
+
+  if (options.json) {
+    console.log(JSON.stringify({ ...envelope, hardenerPrompt: prompt }, null, 2));
+    return;
+  }
+
+  console.log(prompt);
 }
 
 export async function runPlanShow(options: PlanShowOptions = {}): Promise<void> {

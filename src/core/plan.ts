@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'fs-extra';
+import { hardeningGaps, type HardeningGap } from './packs.js';
 import { parsePlan, type Phase, type Plan, type PlanParseError, type Task } from './plan-schema.js';
 
 export const PLAN_RELATIVE_PATH = path.join('.agent-flow', 'plan.json');
@@ -81,6 +82,7 @@ export function scaffoldPlanFromRequirements(universe: string[], now = new Date(
           status: 'pending' as const,
           gates: [],
           acceptance: [],
+          waives: [],
         },
       ],
     };
@@ -111,6 +113,7 @@ export type PlanValidation = {
   errors: string[];
   warnings: string[];
   coverage: { unmapped: string[]; unknown: string[]; duplicated: string[] };
+  hardening: Array<{ phase: string; task: string; gaps: HardeningGap[] }>;
 };
 
 /** Kahn's algorithm: returns node ids that remain in a cycle (best-effort). */
@@ -227,11 +230,34 @@ export function validatePlanStructure(plan: Plan, universe: string[]): PlanValid
   }
   for (const req of duplicated) warnings.push(`requirement ${req} mapped to more than one phase`);
 
+  // --- domain hardening (pitfall packs) ---
+  const hardening: PlanValidation['hardening'] = [];
+  for (const phase of plan.phases) {
+    for (const task of phase.tasks) {
+      const gaps = hardeningGaps(task);
+      if (gaps.length === 0) continue;
+      hardening.push({ phase: phase.id, task: task.id, gaps });
+      const byPack = new Map<string, HardeningGap[]>();
+      for (const gap of gaps) {
+        if (!byPack.has(gap.packId)) byPack.set(gap.packId, []);
+        byPack.get(gap.packId)!.push(gap);
+      }
+      for (const [packId, packGaps] of byPack) {
+        warnings.push(
+          `task ${phase.id}/${task.id} matches pack "${packId}" but has no acceptance covering: ` +
+            packGaps.map((g) => g.criterionId).join(', ') +
+            ` — add criteria, or waive with "waives": ["${packGaps[0].key}"]`,
+        );
+      }
+    }
+  }
+
   return {
     ok: errors.length === 0,
     errors,
     warnings,
     coverage: { unmapped, unknown, duplicated },
+    hardening,
   };
 }
 

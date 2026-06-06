@@ -231,6 +231,31 @@ Tiered rigor (opt-in, set `orchestration.review.tier`):
 - Tier 2: `agent-flow next --wave` emits one envelope per parallelizable task in
   the next wave (scope-disjoint) so the host runtime can fan out.
 
+### Domain hardening
+
+Plans written without domain knowledge ship without domain hardening — the
+acceptance criteria are the contract, and gates/reviews only enforce what the
+contract says. Three layers close that hole, cheapest first:
+
+1. **Pitfall packs (zero tokens).** Curated per-domain checklists built into the
+   CLI (`http-api`, `persistence`, `auth-secrets`, `randomness`). When a task's
+   scope/gates/wording match a pack, `plan validate` warns about table-stakes
+   criteria the task is missing (atomic writes, body caps, redirect cache
+   headers, crypto-grade randomness, ...). Waive a conscious omission per task:
+   `"waives": ["http-api/redirect-cache"]` (or a whole pack: `"waives": ["http-api"]`).
+2. **Reviewer expectations (zero extra cost).** Outstanding pack gaps are
+   embedded in the tier-1 review envelope as hardening expectations, and the
+   rubric makes missing table-stakes hardening a blocking finding unless waived.
+3. **`plan harden` (one agent).** `agent-flow plan harden` prints a spawn-ready
+   prompt for a single domain-hardening reviewer; pipe its JSON back with
+   `agent-flow plan harden --apply --from-json -` to merge the proposed
+   acceptance criteria into plan.json — where gates and review enforce them.
+
+```sh
+agent-flow plan harden | <spawn one agent> | agent-flow plan harden --apply --from-json -
+agent-flow plan validate   # re-check coverage
+```
+
 ## Available Skills
 
 | Skill | Use it when |

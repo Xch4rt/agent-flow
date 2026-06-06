@@ -1,7 +1,7 @@
-import fs from 'fs-extra';
 import pc from 'picocolors';
 import { buildContextPack, formatContextPack } from '../core/context-pack.js';
 import { worktreeSignature } from '../core/gates.js';
+import { extractJson, readJsonSource } from '../core/json-input.js';
 import { loadPlan } from '../core/plan.js';
 import {
   buildReviewEnvelope,
@@ -17,27 +17,6 @@ import { brandTitle, keyValue, section, statusLabel } from '../core/terminal-ui.
 
 export type ReviewEmitOptions = { cwd?: string; phase?: string; reviewer?: boolean; json?: boolean };
 export type ReviewRecordOptions = { cwd?: string; phase?: string; verdict?: string; notes?: string; fromJson?: string; json?: boolean };
-
-async function readSource(fromJson: string): Promise<string> {
-  if (fromJson === '-') {
-    const chunks: Buffer[] = [];
-    for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
-    return Buffer.concat(chunks).toString('utf8');
-  }
-  return fs.readFile(fromJson, 'utf8');
-}
-
-/** Pull the last JSON object out of reviewer output (which may have prose around it). */
-function extractJson(text: string): unknown {
-  const trimmed = text.trim();
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const match = trimmed.match(/\{[\s\S]*\}/);
-    if (match) return JSON.parse(match[0]);
-    throw new Error('no JSON object found in reviewer output');
-  }
-}
 
 async function loadPhase(root: string, phaseId: string | undefined): Promise<{ plan: Plan; phase: Phase } | null> {
   if (!phaseId) {
@@ -120,7 +99,7 @@ export async function runReviewRecord(options: ReviewRecordOptions = {}): Promis
   if (options.fromJson) {
     let parsed;
     try {
-      parsed = parseReviewerVerdict(extractJson(await readSource(options.fromJson)));
+      parsed = parseReviewerVerdict(extractJson(await readJsonSource(options.fromJson)));
     } catch (err) {
       console.log(`${statusLabel('fail')} could not read reviewer verdict: ${(err as Error).message}`);
       process.exitCode = 1;
