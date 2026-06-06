@@ -5,7 +5,9 @@ import type { AgentAdapter } from '../types.js';
 import {
   claudeMdTemplate,
   flowCloseSkill,
+  flowHardenSkill,
   flowOnboardSkill,
+  flowOrchestrateSkill,
   flowPlanSkill,
   flowQuickSkill,
   flowResumeSkill,
@@ -17,6 +19,8 @@ const skillNames = [
   'flow-resume',
   'flow-quick',
   'flow-plan',
+  'flow-harden',
+  'flow-orchestrate',
   'flow-verify',
   'flow-close',
 ];
@@ -29,6 +33,8 @@ export function claudeFiles(root: string, detection: ProjectDetection): Array<{ 
       ['flow-resume', flowResumeSkill(detection)],
       ['flow-quick', flowQuickSkill(detection)],
       ['flow-plan', flowPlanSkill()],
+      ['flow-harden', flowHardenSkill()],
+      ['flow-orchestrate', flowOrchestrateSkill()],
       ['flow-verify', flowVerifySkill(detection)],
       ['flow-close', flowCloseSkill()],
     ] as Array<[string, string]>).map(([name, content]) => ({
