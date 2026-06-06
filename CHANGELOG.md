@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.7.1
+
+- Fixed `init` seeding `.planning/REQUIREMENTS.md` with agent-flow's own product spec; it now seeds a neutral template that teaches the `<CATEGORY>-<number>` requirement-id format consumed by `plan init --scaffold` and `plan validate`, with scaffold-safe example ids.
+
 ## v0.7.0
 
 Orchestration rigor: tiered review loop, domain hardening, and a real smoke gate — validated by an E2E benchmark (same project built three ways).
