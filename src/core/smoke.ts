@@ -11,6 +11,10 @@ export type SmokeProbe = {
   name?: string;
   method?: string;
   path: string;
+  /** Request body to send (e.g. a JSON payload for POST probes). */
+  body?: string;
+  /** Request headers. When a body is set, content-type defaults to application/json. */
+  headers?: Record<string, string>;
   /** Acceptable status(es). A single number, or a list. */
   status: number | number[];
   headerIncludes?: Record<string, string>;
@@ -103,9 +107,15 @@ export async function runSmoke(root: string, cfg: SmokeConfig): Promise<SmokeRes
     for (const probe of cfg.probes) {
       const name = probe.name ?? `${probe.method ?? 'GET'} ${probe.path}`;
       try {
+        const headers: Record<string, string> = { ...(probe.headers ?? {}) };
+        if (probe.body !== undefined && !Object.keys(headers).some((k) => k.toLowerCase() === 'content-type')) {
+          headers['content-type'] = 'application/json';
+        }
         const res = await fetch(`${cfg.baseUrl}${probe.path}`, {
           method: probe.method ?? 'GET',
           redirect: 'manual',
+          body: probe.body,
+          headers,
         });
         let ok = statusMatches(res.status, probe.status);
         let detail = `status ${res.status} (want ${JSON.stringify(probe.status)})`;
