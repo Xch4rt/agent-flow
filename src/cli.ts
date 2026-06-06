@@ -242,8 +242,9 @@ export function createProgram(): Command {
     .command('emit')
     .description('Emit a review envelope for a phase (briefing for an independent reviewer).')
     .requiredOption('--phase <id>', 'Phase id to review')
-    .option('--json', 'Print structured JSON')
-    .action(async (options: { phase: string; json?: boolean }) => {
+    .option('--reviewer', 'Print only the spawn-ready reviewer prompt')
+    .option('--json', 'Print structured JSON (includes reviewerPrompt)')
+    .action(async (options: { phase: string; reviewer?: boolean; json?: boolean }) => {
       await runReviewEmit(options);
     });
 
@@ -251,10 +252,11 @@ export function createProgram(): Command {
     .command('record')
     .description('Record an independent reviewer verdict, keyed to the current code.')
     .requiredOption('--phase <id>', 'Phase id reviewed')
-    .requiredOption('--verdict <verdict>', 'pass or fail')
+    .option('--verdict <verdict>', 'pass or fail')
+    .option('--from-json <file>', 'Read a reviewer JSON verdict from a file, or "-" for stdin')
     .option('--notes <notes>', 'Reviewer notes')
     .option('--json', 'Print structured JSON')
-    .action(async (options: { phase: string; verdict: string; notes?: string; json?: boolean }) => {
+    .action(async (options: { phase: string; verdict?: string; fromJson?: string; notes?: string; json?: boolean }) => {
       await runReviewRecord(options);
     });
 

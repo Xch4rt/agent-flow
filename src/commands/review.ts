@@ -1,9 +1,12 @@
+import fs from 'fs-extra';
 import pc from 'picocolors';
 import { buildContextPack, formatContextPack } from '../core/context-pack.js';
 import { worktreeSignature } from '../core/gates.js';
 import { loadPlan } from '../core/plan.js';
 import {
   buildReviewEnvelope,
+  buildReviewerPrompt,
+  parseReviewerVerdict,
   readReviewRecord,
   reviewStatus,
   writeReviewRecord,
@@ -12,8 +15,29 @@ import {
 import type { Phase, Plan } from '../core/plan-schema.js';
 import { brandTitle, keyValue, section, statusLabel } from '../core/terminal-ui.js';
 
-export type ReviewEmitOptions = { cwd?: string; phase?: string; json?: boolean };
-export type ReviewRecordOptions = { cwd?: string; phase?: string; verdict?: string; notes?: string; json?: boolean };
+export type ReviewEmitOptions = { cwd?: string; phase?: string; reviewer?: boolean; json?: boolean };
+export type ReviewRecordOptions = { cwd?: string; phase?: string; verdict?: string; notes?: string; fromJson?: string; json?: boolean };
+
+async function readSource(fromJson: string): Promise<string> {
+  if (fromJson === '-') {
+    const chunks: Buffer[] = [];
+    for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+    return Buffer.concat(chunks).toString('utf8');
+  }
+  return fs.readFile(fromJson, 'utf8');
+}
+
+/** Pull the last JSON object out of reviewer output (which may have prose around it). */
+function extractJson(text: string): unknown {
+  const trimmed = text.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const match = trimmed.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error('no JSON object found in reviewer output');
+  }
+}
 
 async function loadPhase(root: string, phaseId: string | undefined): Promise<{ plan: Plan; phase: Phase } | null> {
   if (!phaseId) {
@@ -48,9 +72,16 @@ export async function runReviewEmit(options: ReviewEmitOptions = {}): Promise<vo
 
   const signature = await worktreeSignature(root);
   const envelope = await buildReviewEnvelope(root, found.plan, found.phase, signature);
+  const reviewerPrompt = buildReviewerPrompt(envelope);
 
   if (options.json) {
-    console.log(JSON.stringify(envelope, null, 2));
+    console.log(JSON.stringify({ ...envelope, reviewerPrompt }, null, 2));
+    return;
+  }
+
+  // --reviewer prints only the spawn-ready reviewer prompt (easy to pipe to an agent).
+  if (options.reviewer) {
+    console.log(reviewerPrompt);
     return;
   }
 
@@ -83,9 +114,29 @@ export async function runReviewRecord(options: ReviewRecordOptions = {}): Promis
   const found = await loadPhase(root, options.phase);
   if (!found) return;
 
-  const verdict = options.verdict;
-  if (verdict !== 'pass' && verdict !== 'fail') {
-    console.log(`${statusLabel('fail')} --verdict must be "pass" or "fail"`);
+  let verdict: ReviewVerdict;
+  let notes = options.notes;
+
+  if (options.fromJson) {
+    let parsed;
+    try {
+      parsed = parseReviewerVerdict(extractJson(await readSource(options.fromJson)));
+    } catch (err) {
+      console.log(`${statusLabel('fail')} could not read reviewer verdict: ${(err as Error).message}`);
+      process.exitCode = 1;
+      return;
+    }
+    if (!parsed.ok) {
+      console.log(`${statusLabel('fail')} invalid reviewer verdict: ${parsed.error}`);
+      process.exitCode = 1;
+      return;
+    }
+    verdict = parsed.verdict;
+    notes = [parsed.notes, options.notes].filter(Boolean).join(' | ') || undefined;
+  } else if (options.verdict === 'pass' || options.verdict === 'fail') {
+    verdict = options.verdict;
+  } else {
+    console.log(`${statusLabel('fail')} provide --verdict pass|fail or --from-json <file|->`);
     process.exitCode = 1;
     return;
   }
@@ -94,8 +145,8 @@ export async function runReviewRecord(options: ReviewRecordOptions = {}): Promis
   await writeReviewRecord(root, {
     phase: found.phase.id,
     signature,
-    verdict: verdict as ReviewVerdict,
-    notes: options.notes,
+    verdict,
+    notes,
     at: new Date().toISOString(),
   });
 
@@ -110,7 +161,7 @@ export async function runReviewRecord(options: ReviewRecordOptions = {}): Promis
 
   console.log(brandTitle('agent-flow review (record)'));
   console.log(`${verdict === 'pass' ? statusLabel('ok') : statusLabel('fail')} phase ${found.phase.id} review recorded: ${verdict}`);
-  if (options.notes) console.log(keyValue('Notes:', options.notes));
+  if (notes) console.log(keyValue('Notes:', notes));
   if (verdict === 'pass') {
     console.log(`Phase can now be closed: ${pc.cyan('agent-flow advance')} (its last task)`);
   } else {
