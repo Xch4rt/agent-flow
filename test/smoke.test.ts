@@ -61,6 +61,25 @@ describe('runSmoke', () => {
     expect(result.summary).toContain('did not start');
   });
 
+  it('sends the probe body and headers (POST with JSON payload)', async () => {
+    const port = 47915;
+    // Echo server: POST /echo -> 201 if the body parses as JSON with a url field, else 400.
+    const body = `const http=require('http');http.createServer((q,s)=>{if(q.url==='/health'){s.writeHead(200);s.end('ok');return}let b='';q.on('data',c=>b+=c);q.on('end',()=>{try{const j=JSON.parse(b);s.writeHead(j.url?201:400);s.end('{}')}catch{s.writeHead(400);s.end('{}')}})}).listen(${port})`;
+    const result = await runSmoke(tmpDir, {
+      start: `node -e "${body}"`,
+      baseUrl: `http://localhost:${port}`,
+      readyPath: '/health',
+      readyTimeoutMs: 8000,
+      probes: [
+        { name: 'with-body', method: 'POST', path: '/echo', body: '{"url":"https://example.com"}', status: 201 },
+        { name: 'no-body', method: 'POST', path: '/echo', status: 400 },
+      ],
+    });
+    expect(result.ok).toBe(true);
+    expect(result.steps.find((s) => s.name === 'with-body')?.ok).toBe(true);
+    expect(result.steps.find((s) => s.name === 'no-body')?.ok).toBe(true);
+  });
+
   it('fails when a probe status does not match', async () => {
     const port = 47913;
     const result = await runSmoke(tmpDir, {
