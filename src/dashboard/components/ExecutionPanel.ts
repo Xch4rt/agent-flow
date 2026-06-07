@@ -13,10 +13,7 @@ export function createExecutionPanel(): blessed.Widgets.BoxElement {
     style: panelStyle(theme.cyan),
     content: [
       c.cyan('EXECUTION MODE'),
-      c.muted('(Bolt)'),
-      '',
-      c.text('"Locked in. Let\'s go."'),
-      c.text('"I\'ll help you move fast."'),
+      c.muted('scoped envelopes, deterministic gates'),
       '',
       c.yellow('Checklist:'),
       `${c.green('[x]')} Scanning codebase`,
