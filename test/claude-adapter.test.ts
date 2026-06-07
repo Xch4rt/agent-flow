@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runInit } from '../src/commands/init.js';
 import { claudeAdapter } from '../src/adapters/claude/install-claude.js';
-import { claudeMdTemplate, flowResumeSkill, flowCloseSkill } from '../src/adapters/claude/templates.js';
+import { claudeMdTemplate, flowResumeSkill, flowCloseSkill, flowHardenSkill, flowOrchestrateSkill } from '../src/adapters/claude/templates.js';
 import type { ProjectDetection } from '../src/core/detect-project.js';
 
 let tmpDir: string;
@@ -43,17 +43,21 @@ describe('Claude adapter', () => {
     expect(relative).toContain('CLAUDE.md');
     expect(relative).toContain('.claude/skills/flow-resume/SKILL.md');
     expect(relative).toContain('.claude/skills/flow-close/SKILL.md');
-    expect(relative).toHaveLength(7);
+    expect(relative).toContain('.claude/skills/flow-harden/SKILL.md');
+    expect(relative).toContain('.claude/skills/flow-orchestrate/SKILL.md');
+    expect(relative).toHaveLength(9);
   });
 });
 
 describe('Claude templates', () => {
-  it('CLAUDE.md imports @AGENTS.md', () => {
+  it('CLAUDE.md imports @AGENTS.md and teaches the daily loop', () => {
     const content = claudeMdTemplate();
     expect(content).toContain('@AGENTS.md');
     expect(content).toContain('## Claude Code');
-    expect(content).toContain('agent-flow start');
-    expect(content).toContain('agent-flow close');
+    expect(content).toContain('/flow-orchestrate');
+    expect(content).toContain('/flow-harden');
+    expect(content).toContain('/flow-close');
+    expect(content).toContain('The gates are the gates');
   });
 
   it('skills use slash-command style', () => {
@@ -71,6 +75,29 @@ describe('Claude templates', () => {
   it('skills have frontmatter with name and description', () => {
     const resume = flowResumeSkill(detection);
     expect(resume).toMatch(/^---\nname: flow-resume\ndescription: /);
+  });
+
+  it('orchestrate skill drives the full loop with independent review', () => {
+    const orchestrate = flowOrchestrateSkill();
+    expect(orchestrate).toMatch(/^---\nname: flow-orchestrate\ndescription: /);
+    expect(orchestrate).toContain('agent-flow next --json');
+    expect(orchestrate).toContain('agent-flow gate --task');
+    expect(orchestrate).toContain('agent-flow advance --task');
+    expect(orchestrate).toContain('review emit --phase <N> --reviewer');
+    expect(orchestrate).toContain('review record --phase <N> --from-json');
+    expect(orchestrate).toContain('next --wave');
+    // Independence and honesty guardrails must be explicit.
+    expect(orchestrate).toContain('do not hint at a verdict');
+    expect(orchestrate).toContain('Never record a verdict the reviewer did not produce');
+  });
+
+  it('harden skill runs emit, apply, and conscious waivers', () => {
+    const harden = flowHardenSkill();
+    expect(harden).toMatch(/^---\nname: flow-harden\ndescription: /);
+    expect(harden).toContain('agent-flow plan harden');
+    expect(harden).toContain('plan harden --apply --from-json');
+    expect(harden).toContain('agent-flow plan validate');
+    expect(harden).toContain('waives');
   });
 });
 

@@ -2,15 +2,27 @@
 
 Agent Flow is a local workflow and memory layer for AI coding agents, with first-class support for Codex and Claude Code.
 
-> Never explain your repo twice.
+> Never explain your repo twice. And never trust "done" without green gates.
+
+![agent-flow quickstart](demo/out/quickstart.gif)
+
+```sh
+npm install -g @xch4rt/agent-flow
+agent-flow init --claude     # installs /flow-* skills for Claude Code
+```
+
+Then, inside Claude Code: `/flow-plan` → `/flow-harden` → `/flow-orchestrate`. Agent Flow emits the envelopes and runs the gates; your agent does the work; `advance` refuses to close anything that isn't proven.
 
 ## What It Is
 
-Agent Flow helps AI coding agents understand a repository once, save the useful context, and reuse it across future coding sessions.
+Agent Flow helps AI coding agents understand a repository once, save the useful context, and reuse it across future coding sessions — and drives planned work as a deterministic state machine with hard quality gates.
 
-It is not a generic agent framework. It is a small developer tool for project continuity: onboarding a repo, resuming context, planning work, verifying changes, and closing a session with useful memory.
+It is not a generic agent framework. It is a small developer tool with two jobs:
 
-Codex uses `.codex/skills/`. Claude Code uses `CLAUDE.md` and `.claude/skills/`. Shared Agent Flow memory remains `.planning/` and `.memory/`. The core value is the same across agents: avoid repeatedly explaining the repo.
+1. **Continuity**: onboarding a repo, resuming context, and closing sessions with useful memory, so agents stop asking you to re-explain the project.
+2. **Orchestration with teeth**: a committed plan (`.agent-flow/plan.json`), scoped task envelopes, deterministic gates (tests, typecheck, a real boot-and-probe smoke gate), independent phase reviews, and domain-hardening checks — at near-zero token overhead.
+
+Codex uses `.codex/skills/`. Claude Code uses `CLAUDE.md` and `.claude/skills/`. Shared Agent Flow memory remains `.planning/` and `.memory/`. The core value is the same across agents: avoid repeatedly explaining the repo, and make "done" mean something.
 
 ## The Problem
 
@@ -197,6 +209,8 @@ agent-flow gate --task 1.1      # run the task's gates (tests/typecheck), cache 
 agent-flow advance --task 1.1   # marks done only if the gate is green; appends memory; moves on
 ```
 
+![the daily loop: gate, refuse, review, advance](demo/out/daily-loop.gif)
+
 Gates are configured in `.agent-flow/config.json` under `orchestration` and
 resolved from detected package scripts by default. `advance` is a hard gate: it
 refuses unless the gates are green for the current code (a worktree content
@@ -255,6 +269,10 @@ contract says. Three layers close that hole, cheapest first:
 agent-flow plan harden | <spawn one agent> | agent-flow plan harden --apply --from-json -
 agent-flow plan validate   # re-check coverage
 ```
+
+![domain hardening: packs flag the gaps, one agent fills them](demo/out/harden.gif)
+
+Benchmark-validated: building the same project three ways (bare loop, hardened loop, and a research-heavy multi-agent pipeline), the hardened loop matched the heavy pipeline's quality checklist at **24% of its tokens and ~15% of its wall time**.
 
 ## Available Skills
 
@@ -424,33 +442,19 @@ For `agent-flow onboard`, `--force` replaces generated onboarding sections only.
 
 ## Current Status / Roadmap
 
-Current MVP:
+Current (v0.7.x):
 
-- Interactive terminal dashboard with real actions
-- First-run guided setup for uninitialized repos
-- `agent-flow start <task>` with context pack and next-action guidance
-- `agent-flow close` with interactive and non-interactive memory capture
-- `agent-flow init --codex`
-- `agent-flow onboard`
-- `agent-flow status`
-- `agent-flow doctor`
-- `agent-flow context <task>` with `--stats` for token savings
-- `agent-flow memory list`
-- `agent-flow memory search <query>`
-- `agent-flow memory query <query>`
-- `agent-flow memory inspect`
-- `agent-flow memory rebuild`
-- `agent-flow memory context <query>`
-- `agent-flow memory validate`
-- `agent-flow memory append`
-- Codex skills for onboarding, resume, quick work, planning, verification, and closeout
-- File-based planning and memory
+- **Orchestration**: structured plan (`.agent-flow/plan.json`), `next`/`gate`/`advance` conductor loop, Tier-1 independent phase review, Tier-2 wave fan-out, built-in boot-and-probe smoke gate, `--root` project targeting
+- **Domain hardening**: pitfall packs in `plan validate`, hardening expectations in review envelopes, one-agent `plan harden` pass
+- **Agent adapters**: Claude Code skills for the full daily loop (`/flow-plan`, `/flow-harden`, `/flow-orchestrate`, plus onboard/resume/quick/verify/close); Codex skills for continuity workflows
+- **Continuity**: deterministic onboarding, indexed context packs (`context`, `start`), JSONL memory with SQLite query index, interactive dashboard, `status`/`doctor`
 
 Near-term roadmap:
 
-- Improve deterministic onboarding from real dogfooding feedback
+- Bring the orchestration loop skills to Codex (parity with the Claude adapter)
+- More pitfall packs (frontend/XSS, SQL, CLI tools, async concurrency)
+- Goal-backward phase verification (independent of the executor)
 - Improve project detection for more repo shapes
-- Keep the Codex workflow small, safe, and predictable before adding more integrations
 
 ## Limitations
 

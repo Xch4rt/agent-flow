@@ -28,27 +28,21 @@ export function claudeMdTemplate(): string {
 
 ## Claude Code
 
-Use Agent Flow for project continuity.
+Use Agent Flow for project continuity and orchestrated execution.
 
-Start task-focused work with:
+Daily loop for planned work (\`.agent-flow/plan.json\`):
 
-\`\`\`sh
-agent-flow start "<task>"
-\`\`\`
+- \`/flow-plan <feature>\` — break work into phases/tasks with acceptance criteria
+- \`/flow-harden\` — one-agent hardening pass merges domain pitfalls into the plan
+- \`/flow-orchestrate\` — execute the loop: next → implement → gate → review → advance
 
-For focused context:
+Quick work and continuity:
 
-\`\`\`sh
-agent-flow context "<task>"
-\`\`\`
+- \`/flow-quick <small task>\` — narrow change, minimal diff
+- \`agent-flow context "<task>"\` — focused context pack (prefer it over reading all \`.planning/\` and \`.memory/\` manually)
+- \`/flow-close\` — record durable memory at the end of meaningful work
 
-At the end of meaningful work:
-
-\`\`\`sh
-agent-flow close
-\`\`\`
-
-Prefer Agent Flow context packs over reading all \`.planning/\` and \`.memory/\` files manually.
+The gates are the gates: \`agent-flow advance\` refuses to close work whose gates or reviews are not green for the current code. Do not work around it.
 `;
 }
 
@@ -258,13 +252,28 @@ Plan format:
 - Memory updates: planning or JSONL entries to write after completion.
 - Recommended next commands: exact commands or Claude Code skill invocations to run next.
 
+For multi-phase work, author the structured orchestration plan so the deterministic loop can drive it:
+
+1. Ensure requirement ids exist in \`.planning/REQUIREMENTS.md\` (format \`CAT-01\`).
+2. Seed and refine \`.agent-flow/plan.json\`:
+
+   \`\`\`sh
+   agent-flow plan init --scaffold
+   \`\`\`
+
+   Replace draft phases/tasks with real ones: per task set \`title\`, \`scope\` (the only files the task may touch), \`wave\` (same wave = parallelizable when scope-disjoint), \`gates\` (e.g. \`test\`, \`smoke\`), and specific, testable \`acceptance\` criteria with \`proof\`.
+3. Validate structure, coverage, and pitfall-pack hardening warnings:
+
+   \`\`\`sh
+   agent-flow plan validate
+   \`\`\`
+
 Recommended next commands guidance:
 
-- If the plan is ready to implement, recommend \`/flow-quick <first narrow phase>\` for small first phases or \`/flow-plan <refined scope>\` only if more planning is still needed.
+- After authoring \`.agent-flow/plan.json\`, recommend \`/flow-harden\` (one-agent hardening pass) then \`/flow-orchestrate\` (execute the loop).
+- If the plan is a single narrow change, recommend \`/flow-quick <task>\` instead of the orchestration loop.
 - Recommend \`agent-flow context "<task>"\` before implementation when the next step needs focused repo context.
-- Recommend project verification commands from package scripts when known from repo inspection.
-- Recommend \`/flow-verify\` after implementation.
-- Recommend \`/flow-close\` after verification to update planning and memory.
+- Recommend \`/flow-verify\` after implementation and \`/flow-close\` after verification.
 - Keep commands copy-pasteable and ordered. Do not include commands that are not useful for the specific plan.
 
 ${nextCommandRule}
@@ -317,6 +326,133 @@ For verification, usually recommend:
 1. \`/flow-close\` when the work is ready and should be recorded
 2. The specific command or fix needed when verification fails
 3. \`git status --short\` before commit or handoff
+`;
+}
+
+export function flowOrchestrateSkill(): string {
+  return `${header('flow-orchestrate', 'Drive the agent-flow orchestration loop: next task, execute, gate, independent review, advance — until the plan is done or blocked.')}
+# /flow-orchestrate
+
+Use when \`.agent-flow/plan.json\` exists and the user wants to make progress on the plan. This skill is the daily driver: it runs the deterministic loop and you do the work inside it.
+
+Requires an authored plan. If \`.agent-flow/plan.json\` is missing, recommend \`/flow-plan\` first. If it has draft placeholder tasks ("draft — rename"), stop and recommend refining the plan.
+
+## The loop
+
+Repeat until \`agent-flow plan show\` reports nothing actionable, or a step blocks:
+
+1. **Get the next envelope:**
+
+   \`\`\`sh
+   agent-flow next --json
+   \`\`\`
+
+   Read the task id, scope files, acceptance criteria, and gates. The envelope's context pack is your briefing — prefer it over re-reading the whole repo.
+
+2. **Execute the task.** Implement ONLY within the task's scope files, satisfying EVERY acceptance criterion (including \`H<n>\` hardening criteria). Write the tests the criteria demand. For independent, scope-disjoint parallel work, use \`agent-flow next --wave --json\` and spawn one executor subagent per envelope (each instructed to stay inside its scope and report results); never let two agents share a scope file.
+
+3. **Run the gates:**
+
+   \`\`\`sh
+   agent-flow gate --task <id>
+   \`\`\`
+
+   If a gate fails, fix the code and re-run. Do not weaken tests or acceptance criteria to make a gate pass.
+
+4. **Commit the task's work** with a conventional message, then advance:
+
+   \`\`\`sh
+   agent-flow advance --task <id>
+   \`\`\`
+
+5. **Tier-1 review (when advance refuses to close a phase):** the phase needs an independent verdict.
+
+   \`\`\`sh
+   agent-flow review emit --phase <N> --reviewer
+   \`\`\`
+
+   Spawn a SEPARATE reviewer subagent with that prompt verbatim (plus the project path). The reviewer must be independent: do not summarize the code for it, do not hint at a verdict. Pipe its raw output back:
+
+   \`\`\`sh
+   agent-flow review record --phase <N> --from-json <reviewer-output-file or ->
+   \`\`\`
+
+   If the verdict is \`fail\`, fix the findings, re-run gates, and re-review. Never record a verdict the reviewer did not produce.
+
+6. Go back to step 1.
+
+## Rules
+
+- The gates are the gates: \`advance\` refusing means the work is not done, not that the tool is wrong.
+- Stay inside each task's scope. If the task needs a file outside its scope, stop and recommend editing the plan instead.
+- Surface blockers honestly: a failing gate, a fail verdict, or a scope conflict ends the loop with a clear report.
+
+Final response per session: tasks completed, gates run, review verdicts, current \`agent-flow plan show\` position.
+
+${nextCommandRule}
+
+For orchestration, usually recommend:
+
+1. \`agent-flow plan show\` to see position
+2. \`/flow-orchestrate\` to continue the loop
+3. \`/flow-verify\` then \`/flow-close\` when stopping for the day
+`;
+}
+
+export function flowHardenSkill(): string {
+  return `${header('flow-harden', 'Run the domain-hardening pass: pitfall-pack gaps, one hardening reviewer agent, and merge its acceptance criteria into the plan.')}
+# /flow-harden
+
+Use after authoring or changing \`.agent-flow/plan.json\`, before executing it. Cheap insurance: one agent pass turns domain pitfalls into enforceable acceptance criteria.
+
+Workflow:
+
+1. **See the deterministic gaps first:**
+
+   \`\`\`sh
+   agent-flow plan validate
+   \`\`\`
+
+   Pack warnings ("matches pack X but has no acceptance covering: ...") are the zero-cost baseline.
+
+2. **Emit the hardening prompt and spawn ONE reviewer subagent with it verbatim:**
+
+   \`\`\`sh
+   agent-flow plan harden
+   \`\`\`
+
+   The agent proposes missing acceptance criteria as strict JSON. Do not propose criteria yourself — independence is the point.
+
+3. **Apply its raw output (prose around the JSON is fine):**
+
+   \`\`\`sh
+   agent-flow plan harden --apply --from-json <file or ->
+   \`\`\`
+
+4. **Re-validate and resolve the remainder:**
+
+   \`\`\`sh
+   agent-flow plan validate
+   \`\`\`
+
+   For each remaining warning either add a criterion, or waive it CONSCIOUSLY on the task when the concern belongs to another module or is genuinely out of scope:
+
+   \`\`\`json
+   "waives": ["randomness/crypto-random", "persistence"]
+   \`\`\`
+
+   A waiver is a documented decision, not a mute button — say why in your summary.
+
+5. Commit the hardened plan.
+
+Final response: criteria added (per task), warnings waived and why, validate status.
+
+${nextCommandRule}
+
+For hardening, usually recommend:
+
+1. \`agent-flow plan validate\` to confirm a clean plan
+2. \`/flow-orchestrate\` to start executing
 `;
 }
 
