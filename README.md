@@ -1,465 +1,96 @@
 # Agent Flow
 
-Agent Flow is a local workflow and memory layer for AI coding agents, with first-class support for Codex and Claude Code.
+Local workflow and memory layer for AI coding agents — Claude Code and Codex.
 
-> Never explain your repo twice. And never trust "done" without green gates.
+> Never explain your repo twice. Never trust "done" without green gates.
 
 ![agent-flow quickstart](demo/out/quickstart.gif)
 
 ```sh
 npm install -g @xch4rt/agent-flow
-agent-flow init --claude     # installs /flow-* skills for Claude Code
+agent-flow init --claude     # or --codex, or --agent all
 ```
 
-Then, inside Claude Code: `/flow-plan` → `/flow-harden` → `/flow-orchestrate`. Agent Flow emits the envelopes and runs the gates; your agent does the work; `advance` refuses to close anything that isn't proven.
-
-## What It Is
-
-Agent Flow helps AI coding agents understand a repository once, save the useful context, and reuse it across future coding sessions — and drives planned work as a deterministic state machine with hard quality gates.
-
-It is not a generic agent framework. It is a small developer tool with two jobs:
-
-1. **Continuity**: onboarding a repo, resuming context, and closing sessions with useful memory, so agents stop asking you to re-explain the project.
-2. **Orchestration with teeth**: a committed plan (`.agent-flow/plan.json`), scoped task envelopes, deterministic gates (tests, typecheck, a real boot-and-probe smoke gate), independent phase reviews, and domain-hardening checks — at near-zero token overhead.
-
-Codex uses `.codex/skills/`. Claude Code uses `CLAUDE.md` and `.claude/skills/`. Shared Agent Flow memory remains `.planning/` and `.memory/`. The core value is the same across agents: avoid repeatedly explaining the repo, and make "done" mean something.
-
-## The Problem
-
-AI coding sessions often start with the same manual explanation:
-
-- What this repo does
-- Which files matter
-- How to run tests
-- What was decided last time
-- What is safe to change
-- What still needs attention
-
-Agent Flow turns that repeated explanation into repo-local planning files, memory entries, and Codex skills.
-
-## Daily Usage
-
-**Before Agent Flow:**
-
-- Explain the repo again.
-- Paste architecture notes.
-- Tell Codex what files matter.
-- Repeat prior decisions and known errors.
-- Waste tokens and risk missing context.
-
-**After Agent Flow:**
-
-```sh
-agent-flow start "fix billing webhook"
-# paste the context pack into Codex
-# work with $flow-quick or $flow-plan
-agent-flow close
-```
-
-That is the daily loop. `start` builds a compact context pack with project state, relevant memory, and verification commands. `close` saves what happened so the next session picks up where you left off.
-
-## Quick Start
-
-Run without adding it to your project:
-
-```sh
-npx @xch4rt/agent-flow
-npx @xch4rt/agent-flow init --codex
-npx @xch4rt/agent-flow onboard
-```
-
-Or install the CLI globally:
-
-```sh
-npm install -g @xch4rt/agent-flow
-```
-
-Check the CLI:
-
-```sh
-agent-flow --help
-```
-
-Run the dashboard:
-
-```sh
-agent-flow
-```
-
-For local development:
-
-```sh
-pnpm install
-pnpm build
-pnpm link --global
-```
-
-Initialize a project:
-
-```sh
-agent-flow init --codex    # for Codex
-agent-flow init --claude   # for Claude Code
-agent-flow init --agent all  # for both
-agent-flow onboard
-```
-
-Or just run `agent-flow` in an uninitialized repo for guided setup.
-
-## Daily Workflow
-
-Agent Flow is built around this loop:
+Then, inside Claude Code:
 
 ```text
-init -> onboard -> start -> work -> close
+/flow-plan <feature>     break work into phases/tasks with acceptance criteria
+/flow-harden             one agent turns domain pitfalls into enforceable criteria
+/flow-orchestrate        execute: next → implement → gate → review → advance
 ```
 
-First-time setup:
+Agent Flow emits the envelopes and runs the gates; your agent does the work; `advance` refuses to close anything that isn't proven.
 
-1. Run `agent-flow init --codex`
-2. Run `agent-flow onboard`
-3. Run `agent-flow doctor`
+## Why
 
-Or just run `agent-flow` in an uninitialized repo and follow the guided setup.
+- **Agents forget your repo.** Agent Flow keeps planning files and append-only memory in the repo, and serves task-focused context packs — no re-explaining, no pasting the whole codebase.
+- **Agents say "done" too easily.** A committed plan with acceptance criteria, deterministic gates (tests, typecheck, a real boot-and-probe smoke gate), and independent phase reviews make "done" mean something.
+- **Plans miss what experts know.** Pitfall packs flag missing table-stakes criteria for free; one hardening agent fills the rest. Benchmark: matched a research-heavy multi-agent pipeline's quality at **24% of its tokens**.
 
-Daily use:
+Everything is local files in your repo. No server, no embeddings, no external services.
 
-1. Start with `agent-flow start "your task"` (or `$flow-resume` inside Codex, `/flow-resume` inside Claude Code)
-2. Paste the context pack into your agent
-3. Use `$flow-quick` for small scoped changes
-4. Use `$flow-plan` for larger work
-5. Use `$flow-verify` before commit or handoff
-6. End with `agent-flow close` (or `$flow-close` inside Codex)
-
-Useful CLI checks:
+## The daily loop
 
 ```sh
-agent-flow status
-agent-flow doctor
-agent-flow context "fix billing webhook" --stats
-agent-flow memory list
-agent-flow memory search "auth"
-agent-flow memory query "billing webhook"
-```
-
-## Dashboard
-
-Running `agent-flow` without a subcommand opens the terminal dashboard. It shows the current project, branch, memory status, execution mode, memory mode, and the main workflow menu.
-
-The dashboard is interactive in a real terminal:
-
-- Use arrow keys or `j`/`k` to move.
-- Press `enter` to select.
-- Press `q`, `esc`, or `ctrl-c` to exit.
-
-In non-interactive environments such as CI, pipes, or captured command output, Agent Flow prints a compact fallback view instead of taking over the terminal.
-
-## Commands
-
-```sh
-agent-flow init [--codex] [--claude] [--agent codex|claude|all] [--force] [--force-memory]
-agent-flow onboard [--refresh] [--dry-run] [--force]
-agent-flow start <task> [--module name] [--limit n] [--budget-lines n] [--json] [--stats]
-agent-flow close [--change "..."] [--decision "..."] [--error "..."] [--next "..."] [--module name] [--allow-duplicate]
-agent-flow status
-agent-flow doctor
-agent-flow context <task> [--module name] [--limit n] [--budget-lines n] [--json] [--stats]
-agent-flow memory list
-agent-flow memory search <query> [--file events|modules|decisions|errors] [--type type] [--module name] [--limit n]
-agent-flow memory query <query> [--module name] [--drawer name] [--type type] [--status status] [--limit n] [--json]
-agent-flow memory inspect
-agent-flow memory rebuild [--dry-run] [--json]
-agent-flow memory context <query> [--limit n]
-agent-flow memory validate
-agent-flow memory append --file events --type event --summary "..." [--module name] [--files a,b] [--tags tag]
-agent-flow plan init [--scaffold] [--force] [--json]
-agent-flow plan validate [--json]
-agent-flow plan show [--json]
-agent-flow plan render [--json]
-agent-flow next [--wave] [--peek] [--budget-lines n] [--json]
-agent-flow gate [--task id] [--strict] [--json]
-agent-flow advance [--task id] [--gate] [--strict] [--json]
-agent-flow review emit --phase id [--json]
-agent-flow review record --phase id --verdict pass|fail [--notes "..."] [--json]
-```
-
-## Orchestration
-
-Agent Flow can drive a project as a deterministic state machine while keeping the
-continuity layer. It never spawns agents itself — it emits envelopes and runs
-gates; your agent does the work.
-
-Every command targets the agent-flow project at the current directory, the
-nearest ancestor project (so you can run from any subdirectory), or a path you
-pass with the global `--root <dir>` flag (or the `AGENT_FLOW_ROOT` env var). Orchestration overhead stays near zero because
-each step gets a scoped context pack instead of the whole repo.
-
-The plan lives in `.agent-flow/plan.json` (canonical, committed). It groups work
-into phases and tasks with requirements, waves, dependencies, gates, and
-acceptance criteria. `.planning/ROADMAP.md` is a generated human view
-(`agent-flow plan render`).
-
-The loop:
-
-```sh
-agent-flow plan init            # seed .agent-flow/plan.json (author phases, or --scaffold)
-agent-flow plan validate        # requirement coverage, dependency DAG, waves
-agent-flow next                 # next task + acceptance + gates + a scoped context pack
-# ... implement the task ...
-agent-flow gate --task 1.1      # run the task's gates (tests/typecheck), cache the result
-agent-flow advance --task 1.1   # marks done only if the gate is green; appends memory; moves on
+agent-flow next                 # next task + acceptance + gates + scoped context pack
+# ... your agent implements ...
+agent-flow gate --task 1.1      # run the task's gates
+agent-flow advance --task 1.1   # closes only if gates are green for the current code
 ```
 
 ![the daily loop: gate, refuse, review, advance](demo/out/daily-loop.gif)
 
-Gates are configured in `.agent-flow/config.json` under `orchestration` and
-resolved from detected package scripts by default. `advance` is a hard gate: it
-refuses unless the gates are green for the current code (a worktree content
-signature ties the cached result to the exact code).
+Closing a phase can require an **independent review** (tier 1): `review emit --reviewer` prints a spawn-ready prompt; `review record --from-json -` ingests the reviewer's JSON verdict. Scope-disjoint tasks fan out in parallel with `next --wave` (tier 2).
 
-There is a built-in **smoke** gate that boots the app and probes it over HTTP —
-catching breakage that `inject`-style tests miss (e.g. a wrong start entrypoint).
-Add `"smoke"` to a task's gates and configure it under `orchestration.smoke`:
-
-```json
-{
-  "orchestration": {
-    "smoke": {
-      "start": "npm start",
-      "env": { "PORT": "4999" },
-      "baseUrl": "http://localhost:4999",
-      "readyPath": "/",
-      "probes": [
-        { "name": "redirect", "method": "GET", "path": "/abc", "status": [301, 404] }
-      ]
-    }
-  }
-}
-```
-
-Tiered rigor (opt-in, set `orchestration.review.tier`):
-
-- Tier 0 (default): deterministic gates only — zero added agent cost.
-- Tier 1: closing a phase requires an independent review. `agent-flow review emit
-  --phase N` prints a review envelope to hand to a separate reviewer; record the
-  verdict with `agent-flow review record --phase N --verdict pass|fail`.
-- Tier 2: `agent-flow next --wave` emits one envelope per parallelizable task in
-  the next wave (scope-disjoint) so the host runtime can fan out.
-
-### Domain hardening
-
-Plans written without domain knowledge ship without domain hardening — the
-acceptance criteria are the contract, and gates/reviews only enforce what the
-contract says. Three layers close that hole, cheapest first:
-
-1. **Pitfall packs (zero tokens).** Curated per-domain checklists built into the
-   CLI (`http-api`, `persistence`, `auth-secrets`, `randomness`). When a task's
-   scope/gates/wording match a pack, `plan validate` warns about table-stakes
-   criteria the task is missing (atomic writes, body caps, redirect cache
-   headers, crypto-grade randomness, ...). Waive a conscious omission per task:
-   `"waives": ["http-api/redirect-cache"]` (or a whole pack: `"waives": ["http-api"]`).
-2. **Reviewer expectations (zero extra cost).** Outstanding pack gaps are
-   embedded in the tier-1 review envelope as hardening expectations, and the
-   rubric makes missing table-stakes hardening a blocking finding unless waived.
-3. **`plan harden` (one agent).** `agent-flow plan harden` prints a spawn-ready
-   prompt for a single domain-hardening reviewer; pipe its JSON back with
-   `agent-flow plan harden --apply --from-json -` to merge the proposed
-   acceptance criteria into plan.json — where gates and review enforce them.
+### Hardening
 
 ```sh
-agent-flow plan harden | <spawn one agent> | agent-flow plan harden --apply --from-json -
-agent-flow plan validate   # re-check coverage
+agent-flow plan validate   # pitfall packs flag missing table-stakes criteria — zero tokens
+agent-flow plan harden | <one agent> | agent-flow plan harden --apply --from-json -
 ```
 
 ![domain hardening: packs flag the gaps, one agent fills them](demo/out/harden.gif)
 
-Benchmark-validated: building the same project three ways (bare loop, hardened loop, and a research-heavy multi-agent pipeline), the hardened loop matched the heavy pipeline's quality checklist at **24% of its tokens and ~15% of its wall time**.
+→ Full details: **[docs/orchestration.md](docs/orchestration.md)**
 
-## Available Skills
+## Skills
+
+Installed by `agent-flow init --claude` (`.claude/skills/`) and `init --codex` (`.codex/skills/`):
 
 | Skill | Use it when |
 | --- | --- |
-| `flow-onboard` | You want Codex to add human-level context after `agent-flow onboard` creates the deterministic baseline. |
-| `flow-resume` | You are starting a new session and want Codex to summarize current state, recent events, decisions, risks, and next actions. |
-| `flow-quick` | You need a small, scoped code change with minimal diff. |
-| `flow-plan` | You need to break larger work into phases with acceptance criteria. |
-| `flow-verify` | You want Codex to inspect the diff, run available checks, and catch scope creep before handoff. |
-| `flow-close` | You are ending a session and want to save durable project memory for next time. |
+| `/flow-plan` | Break larger work into phases/tasks and author `.agent-flow/plan.json` |
+| `/flow-harden` | Run the hardening pass before executing a plan |
+| `/flow-orchestrate` | Drive the loop: next → implement → gate → review → advance |
+| `/flow-quick` | Small scoped change, minimal diff |
+| `/flow-verify` | Inspect the diff, run checks, catch scope creep before handoff |
+| `/flow-onboard` / `/flow-resume` / `/flow-close` | First contact, session start, session end |
 
-## How Memory Works
+Codex currently ships the continuity skills (`$flow-*`); the orchestration loop skills are Claude Code-first (Codex parity is on the roadmap).
 
-Agent Flow stores memory in plain files inside the repository.
-
-Planning files live in `.planning/`:
-
-- `PROJECT.md`
-- `REQUIREMENTS.md`
-- `ROADMAP.md`
-- `STATE.md`
-- `DECISIONS.md`
-- `OPEN_QUESTIONS.md`
-
-Append-only memory lives in `.memory/`:
-
-- `events.jsonl`
-- `decisions.jsonl`
-- `errors.jsonl`
-- `modules.jsonl`
-
-Codex skills live in `.codex/skills/`.
-
-All memory entries are JSONL objects with:
-
-- `createdAt`
-- `type`
-- `summary`
-
-Additional structured fields keep memory useful without adding semantic search:
-
-- `events`: optional `module`, `files`, `tags`
-- `modules`: required `module`, optional `files`, `tags`
-- `decisions`: optional `module`, `status`, `rationale`, `alternatives`
-- `errors`: optional `module`, `cause`, `solution`
-
-Memory can be appended from the CLI. Entries are validated by target file and exact duplicates are rejected by default using file, type, module, and normalized summary:
+## Memory & context packs
 
 ```sh
-agent-flow memory append --file events --type change --summary "Documented initial architecture" --module api --files src/api.ts --tags architecture
-agent-flow memory append --file modules --type module --summary "API module owns HTTP routes" --module api --files src/api.ts
-agent-flow memory append --file decisions --type decision --summary "Keep memory local JSONL" --status accepted --rationale "Simple, reviewable, and repo-local"
-agent-flow memory append --file errors --type error --summary "Build failed on missing env validation" --cause "Required env var was unchecked" --solution "Validate env at startup"
+agent-flow context "fix billing webhook"   # task-focused brief instead of the whole repo
+agent-flow close                           # record durable memory at session end
 ```
 
-Use `--allow-duplicate` only when repeating the same durable entry is intentional.
+Planning lives in `.planning/`, append-only memory in `.memory/*.jsonl` (reviewable source of truth), with a generated SQLite index for fast queries. Deterministic local scoring — no embeddings.
 
-Search stays local and non-semantic:
+→ Full details: **[docs/memory.md](docs/memory.md)** · All flags: **[docs/commands.md](docs/commands.md)**
 
-```sh
-agent-flow memory search "billing" --file events --type change --module billing --limit 5
-agent-flow memory query "billing webhook" --module billing --limit 5
-agent-flow memory context "billing"
-```
+## Status
 
-`memory context` prints a compact deterministic context pack with relevant events, modules, decisions, errors, and suggested Codex usage.
+Current (v0.8.x): orchestration loop (plan/next/gate/advance, tiered reviews, wave fan-out, smoke gate), domain hardening (packs + `plan harden`), Claude Code skills for the full loop, deterministic onboarding, indexed context packs, terminal dashboard.
 
-## SQLite Memory Index
+Roadmap: orchestration skills for Codex · more pitfall packs (frontend/XSS, SQL, CLI, concurrency) · goal-backward phase verification · better monorepo detection.
 
-JSONL remains the reviewable source of truth. The SQLite database at `.agent-flow/memory.db` is an internal generated query index for faster structured lookup and better context packs.
+Known limits: no semantic search (deterministic scoring only) · monorepos not deeply understood · detection intentionally simple.
 
-No data leaves your machine. The index is auto-created, migrated, and synced from `.memory/*.jsonl` when query-producing commands need it:
+## Demos
 
-```sh
-agent-flow memory query "billing webhook"
-agent-flow context "fix billing webhook"
-```
+Reproducible VHS recordings (tapes + fixtures + voiceover scripts) live in [`demo/`](demo/).
 
-`agent-flow memory inspect` and `agent-flow status` are read-only state reports. They do not create, sync, or rebuild `.agent-flow/memory.db`. If the index is stale, run `agent-flow memory rebuild` to recreate only the generated index.
+## License
 
-You normally do not manage SQLite directly:
-
-- `agent-flow memory search` is raw JSONL search.
-- `agent-flow memory query` is indexed structured project memory query.
-- `agent-flow context` is the project-aware context pack for coding agents.
-
-Use `agent-flow memory inspect` to see index health and counts. Use `agent-flow memory rebuild` to recreate only the generated index. Rebuild never modifies `.memory/*.jsonl`.
-
-## Context Packs
-
-Context packs reduce token waste by turning local planning files, structured memory, and detected project commands into a compact task-focused brief. Instead of pasting all of `.planning/` and `.memory/`, ask for the context needed for the current task:
-
-```sh
-agent-flow context "fix billing webhook"
-```
-
-The command reads `.planning/STATE.md`, project planning notes, indexed structured memory, and detected package scripts. It scores entries locally with deterministic keyword matching, exact phrase boosts, module preference, memory type priority, status, and recency. It does not use embeddings, semantic search, MCP, or external services.
-
-Example output:
-
-```text
-# Context Pack
-
-Task:
-fix billing webhook
-
-Project Summary:
-- Package manager: pnpm
-- Stack: Next.js, Prisma
-- Commands: dev=pnpm dev, build=pnpm build, test=pnpm test, typecheck=pnpm typecheck
-
-Git Context:
-- Branch: main
-- Dirty: yes
-- Last commit: a1b2c3d Add billing webhook handler
-
-Current State:
-- Billing checkout is working; webhook retry handling is still under review.
-
-Relevant Modules:
-- [billing] Billing module owns checkout, invoices, and webhook idempotency.
-
-Relevant Decisions:
-- [accepted] Keep webhook processing idempotent with provider event ids.
-
-Relevant Errors:
-- [billing] Duplicate Stripe webhook processing created duplicate credits.
-  cause: Missing event id guard.
-  solution: Store processed event ids before applying credits.
-
-Verification Commands:
-- pnpm test
-- pnpm typecheck
-
-Suggested Agent Usage:
-- Use this context before running $flow-quick or $flow-plan.
-- Treat it as a starting point; inspect referenced files before editing.
-```
-
-Use `agent-flow context "<task>"` before `$flow-quick`, before `$flow-plan`, and when resuming a specific task. Use `--module billing` to prefer one area, `--budget-lines 60` for a tighter paste, and `--json` for structured output. Events and open questions are included by default; `--include-events` and `--include-open-questions` are default-on compatibility flags.
-
-Related commands:
-
-- `agent-flow memory search` is for raw local JSONL lookup.
-- `agent-flow memory query` is for indexed structured memory lookup.
-- `agent-flow memory context` is a backward-compatible memory-only context helper.
-- `agent-flow context` is the main project-aware context pack for agent work.
-
-### Memory validation and migration notes
-
-v0.3.0 validates memory schemas. Old or manually edited memory entries may fail if they are missing `createdAt`, `type`, `summary`, or `module` for entries in `modules.jsonl`.
-
-Use this command to find exact file and line errors:
-
-```sh
-agent-flow memory validate
-```
-
-Fix invalid JSONL entries manually, or re-add durable entries using `agent-flow memory append` so the CLI writes the required fields. Validation never modifies memory files.
-
-Existing files are protected by default. `--force` does not overwrite memory files; use `--force-memory` only when you explicitly want to reset memory.
-
-Use `agent-flow onboard` for deterministic baseline context. Use `$flow-onboard` when you want Codex to enrich that baseline with judgment from reading the repo.
-
-For `agent-flow onboard`, `--force` replaces generated onboarding sections only. It does not wipe custom content outside markers and does not wipe memory. `--refresh` appends a new onboarding event; existing module entries are not duplicated.
-
-## Current Status / Roadmap
-
-Current (v0.7.x):
-
-- **Orchestration**: structured plan (`.agent-flow/plan.json`), `next`/`gate`/`advance` conductor loop, Tier-1 independent phase review, Tier-2 wave fan-out, built-in boot-and-probe smoke gate, `--root` project targeting
-- **Domain hardening**: pitfall packs in `plan validate`, hardening expectations in review envelopes, one-agent `plan harden` pass
-- **Agent adapters**: Claude Code skills for the full daily loop (`/flow-plan`, `/flow-harden`, `/flow-orchestrate`, plus onboard/resume/quick/verify/close); Codex skills for continuity workflows
-- **Continuity**: deterministic onboarding, indexed context packs (`context`, `start`), JSONL memory with SQLite query index, interactive dashboard, `status`/`doctor`
-
-Near-term roadmap:
-
-- Bring the orchestration loop skills to Codex (parity with the Claude adapter)
-- More pitfall packs (frontend/XSS, SQL, CLI tools, async concurrency)
-- Goal-backward phase verification (independent of the executor)
-- Improve project detection for more repo shapes
-
-## Limitations
-
-- `agent-flow onboard` creates baseline memory, but Codex may still need `$flow-onboard` for deeper project judgment.
-- Memory uses JSONL as source plus an internal SQLite query index; there is no semantic search yet.
-- Monorepos are not deeply understood yet.
-- Detection is intentionally simple.
-- No MCP, embeddings, or user-managed databases are included in this MVP.
+MIT
