@@ -13,10 +13,7 @@ export function createMemoryPanel(): blessed.Widgets.BoxElement {
     style: panelStyle(theme.purple),
     content: [
       c.purple('MEMORY MODE'),
-      c.muted('(Luna)'),
-      '',
-      c.text('"I got this. Let me check..."'),
-      c.text('"I remember what matters."'),
+      c.muted('durable project context, indexed'),
       '',
       c.yellow('Memory example:'),
       'Found 3 relevant memories:',

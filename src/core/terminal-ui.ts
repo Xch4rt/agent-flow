@@ -35,11 +35,7 @@ export function keyValue(label: string, value: string): string {
 }
 
 export function printFirstRunAgent(): void {
-  console.log(`${pc.cyan('     /^^^\\__')}   ${pc.yellow('<>')}   ${pc.magenta('    /^^^^^^\\___')}`);
-  console.log(`${pc.cyan('    / o  o  \\')}        ${pc.magenta('   /  o    o   \\')}   ${pc.bold('agent-flow')}`);
-  console.log(`${pc.cyan('   |   __   |')}        ${pc.magenta('  |     __      |')}  ${pc.dim('Bolt + Luna online')}`);
-  console.log(`${pc.cyan('   | \\____/ |')}        ${pc.magenta('  |   \\____/    |')}`);
-  console.log(`${pc.cyan('    \\_    _/')}         ${pc.magenta('   \\_        __/')}  ${pc.dim('execution + memory')}`);
-  console.log(`${pc.dim('_____|__||__|___________|____||____|_____')}`);
+  console.log(`${pc.cyan('▣')} ${pc.bold('agent-flow')} ${pc.dim('— execution + memory')}`);
+  console.log(pc.dim('Never explain your repo twice.'));
   console.log('');
 }

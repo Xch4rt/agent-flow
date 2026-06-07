@@ -1,6 +1,5 @@
 import blessed from 'blessed';
 import { c, panelStyle, theme } from '../theme.js';
-import { createDogMascots } from './DogMascots.js';
 
 export function createHeader(): blessed.Widgets.BoxElement {
   const header = blessed.box({
@@ -12,11 +11,10 @@ export function createHeader(): blessed.Widgets.BoxElement {
     style: panelStyle(theme.cyan),
   });
 
-  header.append(createDogMascots());
   header.append(blessed.box({
     top: 1,
-    left: '60%',
-    width: '39%',
+    left: 1,
+    width: '98%',
     height: 10,
     border: 'line',
     label: ' AGENT FLOW ',
@@ -26,11 +24,10 @@ export function createHeader(): blessed.Widgets.BoxElement {
       c.title('AGENT FLOW'),
       c.yellow('Never explain your repo twice.'),
       '',
-      `${c.cyan('Bolt')}: "Yo! Let\'s work together! 💪"`,
-      `${c.purple('Luna')}: "Hey! I\'ll remember the important stuff 🧠"`,
+      `${c.cyan('Execution')}  plan → harden → orchestrate, with gates that don't lie`,
+      `${c.purple('Memory')}     project context that survives across sessions`,
     ].join('\n'),
   }));
 
   return header;
 }
-

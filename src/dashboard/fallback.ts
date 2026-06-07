@@ -1,4 +1,3 @@
-import { compactDogs } from './ascii.js';
 import type { DashboardState } from './state.js';
 import { c } from './theme.js';
 
@@ -6,7 +5,6 @@ export function printDashboardFallback(state: DashboardState): void {
   console.log(c.title('AGENT FLOW'));
   console.log(c.yellow('Never explain your repo twice.'));
   console.log('');
-  console.log(c.cyan(compactDogs));
   console.log(c.muted(`[ Project: ${state.project} ] [ Branch: ${state.branch} ] [ Memory: ${state.memory} ] [ Status: ${state.status} ]`));
   console.log('');
   console.log(c.yellow('WHAT DO YOU WANT TO DO?'));
