@@ -1,6 +1,6 @@
 {
   "name": "@xch4rt/agent-flow",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "author": "Xch4rt <pab203.dev@gmail.com>",
   "description": "Local workflow and memory layer for AI coding agents.",
   "type": "module",

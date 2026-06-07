@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.8.0
+
+Adoption: the full daily loop as Claude Code skills, reproducible demo videos, and a cleaner face.
+
+### Claude Code orchestration skills
+
+- `agent-flow init --claude` now installs the complete daily loop as skills:
+  - `/flow-orchestrate` — drives next → implement → gate → advance; handles the tier-1 review handoff (emit `--reviewer` → independent reviewer subagent → `record --from-json`) with explicit independence guardrails; supports `next --wave` fan-out for scope-disjoint parallel executors.
+  - `/flow-harden` — validate → one hardening agent → apply → conscious waivers, before execution.
+  - `/flow-plan` — now authors `.agent-flow/plan.json` (scaffold → refine → validate) and routes into the loop.
+- The generated `CLAUDE.md` teaches the daily loop and the "gates are the gates" rule.
+
+### Demos
+
+- Added `demo/`: three reproducible VHS tapes (quickstart, harden, daily-loop) with deterministic fixtures, rendered gif+mp4 outputs, a rendering guide, and voiceover scripts.
+
+### UI
+
+- Removed the ASCII dog mascots and persona quotes from the dashboard, fallback view, and first-run banner; replaced with a minimal brand line and informative panel subtitles.
+
+### Docs
+
+- README refreshed for adoption: install-to-loop quick start with embedded demos, illustrated orchestration/hardening sections, benchmark result cited, roadmap updated to v0.7.x+ reality.
+
 ## v0.7.1
 
 - Fixed `init` seeding `.planning/REQUIREMENTS.md` with agent-flow's own product spec; it now seeds a neutral template that teaches the `<CATEGORY>-<number>` requirement-id format consumed by `plan init --scaffold` and `plan validate`, with scaffold-safe example ids.
