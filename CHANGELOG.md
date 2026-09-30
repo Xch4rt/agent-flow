@@ -7,6 +7,14 @@
 - New `agent-flow usage`: parses Claude Code transcripts for the current project (or `--all`) and reports observed input / cache write / cache read / output per session, main thread vs subagents, per model and per skill, peak context, and large cache writes classified as idle-gap rewrites, prefix changes or first requests. Establishes a real baseline instead of chars/4 estimates.
 - `usage` breaks subagent cost down by agent type (from `agent-*.meta.json` or the parent `Agent`/`Task` call), lists the heaviest individual subagents with their peak context and idle rewrites, counts `SendMessage` continuations, adds a per-project breakdown and the average context re-read per request.
 
+### Token tools
+
+- `agent-flow run -- <cmd>`: prints only failures (`file:line — reason`) for vitest, jest, node:test, tsc, eslint and pytest (generic tail otherwise), one line on success, full log in `.agent-flow/logs/`. Gates and executors use it.
+- `agent-flow guard`: Claude Code hooks installed by `init --claude`. Warns on cold resumes of big sessions (prompt cache expired → full re-write) and on sessions past their budget; denies executor tool calls past the executor context budget so they hand off instead of growing. Reads real usage from the transcript; never breaks a session.
+- `agent-flow doctor --tokens`: always-loaded instruction size, project MCP servers, 1M default model, guard/agents installed, `.gitignore`, and last-7d peak context and idle rewrites.
+- `agent-flow bench prepare|finish|report`: reproducible A/B of workflows (agent-flow vs GSD vs plain) with hidden acceptance tests and observed tokens; example task in `bench/tasks/slugify`.
+- `init` adds agent-flow's generated scratch (logs, handoffs, review prompts, caches) to `.gitignore`.
+
 ### Token-aware orchestration
 
 - `/flow-orchestrate` is now a thin dispatcher: one fresh `flow-executor` subagent per task (it fetches its own envelope), a ≤5-line status back, retries as fresh agents instead of `SendMessage` revivals, reviewer/hardener prompts and verdicts passed through files, and a stop at every phase boundary with `/clear`.
