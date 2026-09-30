@@ -1,3 +1,4 @@
+import { DEFAULT_MODEL_ROUTING } from './models.js';
 import type { ProjectDetection } from './detect-project.js';
 
 function commandLine(label: string, value: string | undefined): string {
@@ -171,6 +172,20 @@ export function configTemplate(detection: ProjectDetection, adapterIds: string[]
         strictGates: false,
         // 0 = deterministic gates only; 1 = require an independent phase review.
         review: { tier: 0 },
+        // Token-aware routing. A deterministic router scores each task (scope size,
+        // criteria, domain packs, risky wording) into a tier; each tier is an executor
+        // subagent with its own model and effort. Gates and review still decide quality.
+        router: { enabled: true, thresholds: DEFAULT_MODEL_ROUTING.router.thresholds },
+        tiers: DEFAULT_MODEL_ROUTING.tiers,
+        models: {
+          reviewer: DEFAULT_MODEL_ROUTING.reviewer,
+          hardener: DEFAULT_MODEL_ROUTING.hardener,
+          escalation: DEFAULT_MODEL_ROUTING.escalation,
+        },
+        // Consecutive red attempts before a task climbs one rung: light → standard → deep → escalation.
+        escalateAfterFailures: DEFAULT_MODEL_ROUTING.escalateAfterFailures,
+        // Advisory per-agent context budget: agents hand off instead of growing past it.
+        contextBudgetTokens: DEFAULT_MODEL_ROUTING.contextBudgetTokens,
       },
     },
     null,

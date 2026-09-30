@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### Observed usage
+
+- New `agent-flow usage`: parses Claude Code transcripts for the current project (or `--all`) and reports observed input / cache write / cache read / output per session, main thread vs subagents, per model and per skill, peak context, and large cache writes classified as idle-gap rewrites, prefix changes or first requests. Establishes a real baseline instead of chars/4 estimates.
+- `usage` breaks subagent cost down by agent type (from `agent-*.meta.json` or the parent `Agent`/`Task` call), lists the heaviest individual subagents with their peak context and idle rewrites, counts `SendMessage` continuations, adds a per-project breakdown and the average context re-read per request.
+
+### Token-aware orchestration
+
+- `/flow-orchestrate` is now a thin dispatcher: one fresh `flow-executor` subagent per task (it fetches its own envelope), a ≤5-line status back, retries as fresh agents instead of `SendMessage` revivals, reviewer/hardener prompts and verdicts passed through files, and a stop at every phase boundary with `/clear`.
+- Deterministic task router (zero tokens): each task is scored from plan signals (scope size, criteria, hardening criteria, pitfall packs, smoke gate, dependencies, risky wording) into a tier — `light` (haiku/low), `standard` (sonnet/medium) or `deep` (sonnet/high) — configurable under `orchestration.tiers` / `orchestration.router`, overridable per task with `"tier"`. `plan show` previews each pending task's route.
+- `init --claude` installs role subagents in `.claude/agents/` with explicit `model` and `effort`: `flow-executor-light`, `flow-executor`, `flow-executor-deep`, `flow-reviewer`, `flow-hardener`.
+- Escalation by evidence: orchestrator gate runs are recorded per task (`.agent-flow/task-stats.json`); every `orchestration.escalateAfterFailures` consecutive red attempts (default 2) the task climbs one rung: light → standard → deep → escalation model (opus).
+- `next --brief` (one-line dispatch record) and `next --task <id>` (envelope for a specific task).
+- `orchestration.contextBudgetTokens` (default 150k): executors hand off via `.agent-flow/handoffs/<id>.md` instead of growing past it.
+- Fixed: the orchestrate skill committed before `advance`, which always made the cached gate result stale and forced a second gate run per task; it now advances first, then commits only the task's files and agent-flow state.
+
+### Budget coherence
+
+- `next --json` / `next --wave --json`: the envelope `contextPack` now applies `--budget-lines` (it previously emitted the untrimmed pack) and reports `budget.omitted` per section; envelopes are emitted as compact JSON.
+- `context --json` emits the same budgeted selection as the text view, and `--stats` measures the exact JSON payload emitted (it previously measured the text rendering).
+- Token stats are signed: a pack larger than the baseline is reported as an expansion instead of being clamped to zero saved tokens; stats carry `method: "estimate:chars/4"` and the text view labels them as estimates.
+
 ## v0.8.0
 
 Adoption: the full daily loop as Claude Code skills, reproducible demo videos, and a cleaner face.

@@ -582,6 +582,26 @@ function trimItemsForBudget(pack: ContextPack, budgetLines: number): ContextPack
   return items;
 }
 
+export type ContextPackBudget = {
+  lines: number;
+  /** Items dropped per section to fit the line budget. Nothing is dropped silently. */
+  omitted: Record<keyof ContextPack['items'], number>;
+};
+
+export type BudgetedContextPack = ContextPack & { budget: ContextPackBudget };
+
+/**
+ * Apply the same line budget the text renderer uses to the structured pack,
+ * so `--json` consumers get the same selection as the formatted output.
+ */
+export function budgetContextPack(pack: ContextPack, budgetLines = 100): BudgetedContextPack {
+  const items = trimItemsForBudget(pack, budgetLines);
+  const omitted = Object.fromEntries(
+    (Object.keys(pack.items) as Array<keyof ContextPack['items']>).map((key) => [key, pack.items[key].length - items[key].length]),
+  ) as ContextPackBudget['omitted'];
+  return { ...pack, items, budget: { lines: budgetLines, omitted } };
+}
+
 export function formatContextPack(pack: ContextPack, options: { budgetLines?: number } = {}): string {
   const budgetLines = options.budgetLines ?? 100;
   const items = trimItemsForBudget(pack, budgetLines);

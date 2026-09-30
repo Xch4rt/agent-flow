@@ -39,6 +39,8 @@ export const taskSchema = z.object({
   acceptance: z.array(acceptanceSchema).default([]),
   /** Waived hardening criteria ("pack/criterion") or whole packs ("pack"). */
   waives: z.array(z.string().trim().min(1)).default([]),
+  /** Explicit executor tier; overrides the deterministic router. */
+  tier: z.enum(['light', 'standard', 'deep']).optional(),
 });
 export type Task = z.infer<typeof taskSchema>;
 
