@@ -3,6 +3,7 @@ import type { ProjectDetection } from '../../core/detect-project.js';
 import { writeFileSafe, type WriteResult } from '../../core/write-file-safe.js';
 import type { AgentAdapter } from '../types.js';
 import { DEFAULT_MODEL_ROUTING, getModelRouting, type ModelRouting } from '../../core/models.js';
+import { installGuardHook } from '../../core/claude-settings.js';
 import {
   claudeMdTemplate,
   flowExecutorAgent,
@@ -71,6 +72,8 @@ export async function installClaude(
   for (const file of claudeFiles(root, detection, routing)) {
     results.push(await writeFileSafe(file.path, file.content, options));
   }
+  // Session guard hook, merged into (never replacing) .claude/settings.json.
+  results.push(await installGuardHook(root));
 
   return results;
 }

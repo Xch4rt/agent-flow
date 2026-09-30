@@ -132,9 +132,9 @@ describe('init --claude', () => {
     expect(config.orchestration.escalateAfterFailures).toBe(2);
 
     const executor = await fs.readFile(path.join(tmpDir, '.claude/agents/flow-executor.md'), 'utf8');
-    expect(executor).toMatch(/^---\nname: flow-executor\ndescription: .+\nmodel: sonnet\neffort: medium\n---/);
+    expect(executor).toMatch(/^---\nname: flow-executor\ndescription: .+\nmodel: sonnet\neffort: medium\nhooks:\n/);
     const light = await fs.readFile(path.join(tmpDir, '.claude/agents/flow-executor-light.md'), 'utf8');
-    expect(light).toMatch(/^---\nname: flow-executor-light\ndescription: .+\nmodel: haiku\neffort: low\n---/);
+    expect(light).toMatch(/^---\nname: flow-executor-light\ndescription: .+\nmodel: haiku\neffort: low\nhooks:\n/);
     const deep = await fs.readFile(path.join(tmpDir, '.claude/agents/flow-executor-deep.md'), 'utf8');
     expect(deep).toMatch(/\nmodel: sonnet\neffort: high\n/);
     expect(await fs.readFile(path.join(tmpDir, '.claude/agents/flow-reviewer.md'), 'utf8')).toContain('effort: high');

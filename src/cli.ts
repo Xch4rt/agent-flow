@@ -26,6 +26,8 @@ import { runStart } from './commands/start.js';
 import { runStatus } from './commands/status.js';
 import { runUsage } from './commands/usage.js';
 import { runRunCommand } from './commands/run.js';
+import { runGuard } from './commands/guard.js';
+import { runDoctorTokens } from './commands/doctor-tokens.js';
 import { brandTitle } from './core/terminal-ui.js';
 import { resolveRoot } from './core/project-root.js';
 import { runDashboard } from './dashboard/dashboard.js';
@@ -98,8 +100,10 @@ export function createProgram(): Command {
   program
     .command('doctor')
     .description('Check whether agent-flow files and local tools are present.')
-    .action(async () => {
-      await runDoctor();
+    .option('--tokens', 'Check token hygiene: always-loaded instructions, MCP servers, guard hook, executor agents, recent usage')
+    .action(async (options: { tokens?: boolean }) => {
+      if (options.tokens) await runDoctorTokens();
+      else await runDoctor();
     });
 
   program
@@ -273,6 +277,14 @@ export function createProgram(): Command {
     .option('--json', 'Print structured JSON')
     .action(async (options: { phase: string; verdict?: string; fromJson?: string; notes?: string; json?: boolean }) => {
       await runReviewRecord(options);
+    });
+
+  program
+    .command('guard')
+    .description('Claude Code hook: warn on oversized or cold-resumed sessions (prompt) and stop executors past their context budget (tool). Reads the hook JSON on stdin.')
+    .argument('<event>', 'prompt | tool')
+    .action(async (event: string) => {
+      await runGuard(event);
     });
 
   program

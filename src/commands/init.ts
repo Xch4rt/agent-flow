@@ -1,6 +1,8 @@
+import fs from 'fs-extra';
 import path from 'node:path';
 import pc from 'picocolors';
 import { detectProject } from '../core/detect-project.js';
+import { ensureGitignore } from '../core/claude-settings.js';
 import { writeFileSafe, type WriteResult } from '../core/write-file-safe.js';
 import {
   agentsTemplate,
@@ -107,6 +109,11 @@ export async function runInit(options: InitOptions): Promise<void> {
   for (const id of adapterIds) {
     const adapter = getAdapter(id);
     results.push(...(await adapter.install(root, detection, { force: options.force })));
+  }
+
+  // Keep agent-flow's generated scratch (logs, handoffs, review prompts, caches) out of commits.
+  if (await fs.pathExists(path.join(root, '.git'))) {
+    results.push(await ensureGitignore(root));
   }
 
   if (results.some((result) => result.status === 'created' && path.relative(root, result.path) === '.agent-flow/config.json')) {
