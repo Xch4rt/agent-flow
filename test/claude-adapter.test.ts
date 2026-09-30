@@ -45,7 +45,10 @@ describe('Claude adapter', () => {
     expect(relative).toContain('.claude/skills/flow-close/SKILL.md');
     expect(relative).toContain('.claude/skills/flow-harden/SKILL.md');
     expect(relative).toContain('.claude/skills/flow-orchestrate/SKILL.md');
-    expect(relative).toHaveLength(9);
+    expect(relative).toContain('.claude/agents/flow-executor.md');
+    expect(relative).toContain('.claude/agents/flow-reviewer.md');
+    expect(relative).toContain('.claude/agents/flow-hardener.md');
+    expect(relative).toHaveLength(12);
   });
 });
 
@@ -121,6 +124,57 @@ describe('init --claude', () => {
     const config = await fs.readJson(path.join(tmpDir, '.agent-flow/config.json'));
     expect(config.adapters.claude).toBe(true);
     expect(config.adapters.codex).toBe(false);
+    expect(config.orchestration.models).toEqual({ executor: 'sonnet', reviewer: 'sonnet', hardener: 'sonnet', escalation: 'opus' });
+    expect(config.orchestration.escalateAfterFailures).toBe(2);
+
+    const executor = await fs.readFile(path.join(tmpDir, '.claude/agents/flow-executor.md'), 'utf8');
+    expect(executor).toMatch(/^---\nname: flow-executor\ndescription: .+\nmodel: sonnet\n---/);
+    await expect(fs.pathExists(path.join(tmpDir, '.claude/agents/flow-reviewer.md'))).resolves.toBe(true);
+    await expect(fs.pathExists(path.join(tmpDir, '.claude/agents/flow-hardener.md'))).resolves.toBe(true);
+  });
+
+  it('writes agent models from an existing config', async () => {
+    await fs.ensureDir(path.join(tmpDir, '.agent-flow'));
+    await fs.writeJson(path.join(tmpDir, '.agent-flow/config.json'), {
+      schemaVersion: 1,
+      adapters: { claude: true },
+      orchestration: { models: { executor: 'haiku', reviewer: 'opus' }, contextBudgetTokens: 80000 },
+    });
+    await runInit({ claude: true, cwd: tmpDir });
+    const executor = await fs.readFile(path.join(tmpDir, '.claude/agents/flow-executor.md'), 'utf8');
+    const reviewer = await fs.readFile(path.join(tmpDir, '.claude/agents/flow-reviewer.md'), 'utf8');
+    const hardener = await fs.readFile(path.join(tmpDir, '.claude/agents/flow-hardener.md'), 'utf8');
+    expect(executor).toContain('model: haiku');
+    expect(executor).toContain('~80k tokens');
+    expect(reviewer).toContain('model: opus');
+    expect(hardener).toContain('model: sonnet');
+  });
+});
+
+describe('token-aware orchestration skill', () => {
+  it('dispatches fresh executors and keeps heavy content out of the main thread', () => {
+    const skill = flowOrchestrateSkill();
+    expect(skill).toContain('agent-flow next --brief');
+    expect(skill).toContain('agent-flow next --task <id> --json');
+    expect(skill).toContain('flow-executor');
+    expect(skill).toContain('flow-reviewer');
+    expect(skill).toContain('Never revive a finished or waiting agent with SendMessage');
+    expect(skill).toContain('review emit --phase <N> --reviewer > .agent-flow/review-<N>.prompt.md');
+    expect(skill).toContain('/clear');
+  });
+
+  it('advances before committing (committing first makes the gate result stale)', () => {
+    const skill = flowOrchestrateSkill();
+    const advance = skill.indexOf('agent-flow advance --task <id>\n');
+    const commit = skill.indexOf('&& git commit');
+    expect(advance).toBeGreaterThan(-1);
+    expect(commit).toBeGreaterThan(advance);
+  });
+
+  it('harden skill routes through the flow-hardener agent with file handoff', () => {
+    const harden = flowHardenSkill();
+    expect(harden).toContain('flow-hardener');
+    expect(harden).toContain('agent-flow plan harden > .agent-flow/harden.prompt.md');
   });
 });
 

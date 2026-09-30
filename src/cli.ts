@@ -219,8 +219,10 @@ export function createProgram(): Command {
     .option('--wave', 'Emit envelopes for all parallelizable tasks in the next wave (fan-out)')
     .option('--peek', 'Do not mark the task active (no state mutation)')
     .option('--budget-lines <number>', 'Approximate maximum context-pack lines')
+    .option('--task <id>', 'Emit the envelope for this task instead of the next actionable one')
+    .option('--brief', 'Print only a one-line dispatch record (task, title, executor model) for a thin orchestrator')
     .option('--json', 'Print structured JSON')
-    .action(async (options: { wave?: boolean; peek?: boolean; budgetLines?: string; json?: boolean }) => {
+    .action(async (options: { wave?: boolean; peek?: boolean; budgetLines?: string; json?: boolean; task?: string; brief?: boolean }) => {
       await runNext(options);
     });
 
@@ -230,7 +232,8 @@ export function createProgram(): Command {
     .option('--task <id>', 'Task id to gate (defaults to the next actionable task)')
     .option('--strict', 'Fail (not skip) a gate that has no resolved command')
     .option('--json', 'Print structured JSON')
-    .action(async (options: { task?: string; strict?: boolean; json?: boolean }) => {
+    .option('--no-record', 'Do not count this run toward model escalation (executor iterating within its own attempt)')
+    .action(async (options: { task?: string; strict?: boolean; json?: boolean; record?: boolean }) => {
       await runGateCommand(options);
     });
 

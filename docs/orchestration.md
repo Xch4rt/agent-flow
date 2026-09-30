@@ -20,11 +20,37 @@ agent-flow next                 # next task + acceptance + gates + a scoped cont
 # ... implement the task ...
 agent-flow gate --task 1.1      # run the task's gates, cache the result
 agent-flow advance --task 1.1   # done only if gates are green; appends memory; moves on
+git commit ...                  # commit AFTER advance: the gate result is keyed to the working tree
 ```
 
 `advance` is a hard gate: it refuses unless the gates are green for the current code — a worktree content signature ties the cached result to the exact code. Re-running `gate` after any edit is mandatory by construction.
 
 Orchestration overhead stays near zero: each step gets a scoped context pack instead of the whole repo.
+
+## Token-aware orchestration
+
+Quality is decided by gates and independent review; routing decides what it costs. `/flow-orchestrate` is a thin dispatcher:
+
+- `agent-flow next --brief` prints a one-line dispatch record (task id, title, executor model). The orchestrator never loads the full envelope, code, or diffs.
+- Each task runs in a **fresh `flow-executor` subagent** that fetches its own envelope (`agent-flow next --task <id> --json`), works inside its scope until `agent-flow gate` is green, and returns a ≤5-line status. Retries spawn a fresh executor with the gate tail or handoff — never a revived one (a revived agent re-reads its whole history, and after ~5 idle minutes re-writes it to the prompt cache at full price).
+- Reviewer and hardener prompts and answers travel through files (`review emit ... > .agent-flow/review-<N>.prompt.md`), not through the orchestrator's conversation.
+- The loop stops at phase boundaries and recommends `/clear`; state lives in `plan.json`.
+
+`init --claude` installs the role subagents in `.claude/agents/` (`flow-executor`, `flow-reviewer`, `flow-hardener`) with explicit models from `.agent-flow/config.json`:
+
+```json
+{
+  "orchestration": {
+    "models": { "executor": "sonnet", "reviewer": "sonnet", "hardener": "sonnet", "escalation": "opus" },
+    "escalateAfterFailures": 2,
+    "contextBudgetTokens": 150000
+  }
+}
+```
+
+**Escalation by evidence:** every orchestrator `gate` run is recorded per task (executors iterate with `gate --no-record`, so their own fix-and-retry cycles do not count) in `.agent-flow/task-stats.json`. After `escalateAfterFailures` consecutive red runs, that task's next executor is assigned the `escalation` model (shown by `next --brief`, `next --json` and a failing `gate`); a green run resets it. `0` disables escalation. `contextBudgetTokens` is the advisory budget past which an executor writes `.agent-flow/handoffs/<id>.md` and hands off instead of growing its context.
+
+Re-run `agent-flow init --claude --force` after changing models so the agent files pick them up. Measure the effect with `agent-flow usage --since 1d`.
 
 ## Gates
 

@@ -1,3 +1,4 @@
+import { DEFAULT_MODEL_ROUTING } from './models.js';
 import type { ProjectDetection } from './detect-project.js';
 
 function commandLine(label: string, value: string | undefined): string {
@@ -171,6 +172,17 @@ export function configTemplate(detection: ProjectDetection, adapterIds: string[]
         strictGates: false,
         // 0 = deterministic gates only; 1 = require an independent phase review.
         review: { tier: 0 },
+        // Token-aware routing: roles run on these models; a task's executor escalates
+        // after N consecutive red gate runs. Gates and review still decide quality.
+        models: {
+          executor: DEFAULT_MODEL_ROUTING.executor,
+          reviewer: DEFAULT_MODEL_ROUTING.reviewer,
+          hardener: DEFAULT_MODEL_ROUTING.hardener,
+          escalation: DEFAULT_MODEL_ROUTING.escalation,
+        },
+        escalateAfterFailures: DEFAULT_MODEL_ROUTING.escalateAfterFailures,
+        // Advisory per-agent context budget: agents hand off instead of growing past it.
+        contextBudgetTokens: DEFAULT_MODEL_ROUTING.contextBudgetTokens,
       },
     },
     null,

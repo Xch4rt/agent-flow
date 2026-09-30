@@ -7,6 +7,15 @@
 - New `agent-flow usage`: parses Claude Code transcripts for the current project (or `--all`) and reports observed input / cache write / cache read / output per session, main thread vs subagents, per model and per skill, peak context, and large cache writes classified as idle-gap rewrites, prefix changes or first requests. Establishes a real baseline instead of chars/4 estimates.
 - `usage` breaks subagent cost down by agent type (from `agent-*.meta.json` or the parent `Agent`/`Task` call), lists the heaviest individual subagents with their peak context and idle rewrites, counts `SendMessage` continuations, adds a per-project breakdown and the average context re-read per request.
 
+### Token-aware orchestration
+
+- `/flow-orchestrate` is now a thin dispatcher: one fresh `flow-executor` subagent per task (it fetches its own envelope), a ≤5-line status back, retries as fresh agents instead of `SendMessage` revivals, reviewer/hardener prompts and verdicts passed through files, and a stop at every phase boundary with `/clear`.
+- `init --claude` installs role subagents in `.claude/agents/` (`flow-executor`, `flow-reviewer`, `flow-hardener`) with explicit models from the new `orchestration.models` config (default: sonnet for every role, opus for escalation).
+- Escalation by evidence: gate runs are recorded per task (`.agent-flow/task-stats.json`); after `orchestration.escalateAfterFailures` consecutive red runs (default 2) the task's next executor is assigned the escalation model.
+- `next --brief` (one-line dispatch record) and `next --task <id>` (envelope for a specific task).
+- `orchestration.contextBudgetTokens` (default 150k): executors hand off via `.agent-flow/handoffs/<id>.md` instead of growing past it.
+- Fixed: the orchestrate skill committed before `advance`, which always made the cached gate result stale and forced a second gate run per task; it now advances first, then commits only the task's files and agent-flow state.
+
 ### Budget coherence
 
 - `next --json` / `next --wave --json`: the envelope `contextPack` now applies `--budget-lines` (it previously emitted the untrimmed pack) and reports `budget.omitted` per section; envelopes are emitted as compact JSON.

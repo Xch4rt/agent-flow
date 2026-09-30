@@ -1,4 +1,5 @@
 import type { ProjectDetection } from '../../core/detect-project.js';
+import { DEFAULT_MODEL_ROUTING, type ModelRouting } from '../../core/models.js';
 
 function header(name: string, description: string): string {
   return `---
@@ -330,56 +331,77 @@ For verification, usually recommend:
 }
 
 export function flowOrchestrateSkill(): string {
-  return `${header('flow-orchestrate', 'Drive the agent-flow orchestration loop: next task, execute, gate, independent review, advance — until the plan is done or blocked.')}
+  return `${header('flow-orchestrate', 'Drive the agent-flow orchestration loop as a thin, token-aware dispatcher: one fresh executor per task, gates, independent review, advance — until the plan is done, a phase closes, or a step blocks.')}
 # /flow-orchestrate
 
-Use when \`.agent-flow/plan.json\` exists and the user wants to make progress on the plan. This skill is the daily driver: it runs the deterministic loop and you do the work inside it.
+Use when \`.agent-flow/plan.json\` exists and the user wants to make progress on the plan.
 
 Requires an authored plan. If \`.agent-flow/plan.json\` is missing, recommend \`/flow-plan\` first. If it has draft placeholder tasks ("draft — rename"), stop and recommend refining the plan.
 
+## You are a thin dispatcher
+
+Every turn of this conversation re-reads everything already in it, so keep it small. Executors and reviewers do the heavy reading in their own fresh contexts, on the models \`.agent-flow/config.json\` assigns.
+
+- Do not read source files, diffs, or full test output here. Executors read code; gates print only a tail.
+- Pass file paths and task ids between agents, not contents. Agents write to files and return a short status.
+- Never revive a finished or waiting agent with SendMessage. Spawn a fresh one with the envelope plus the new input (gate tail, review findings, handoff file). A revived agent re-reads its whole history, and after ~5 idle minutes its prompt cache has expired, so the whole history is re-written at full price.
+- Stop at phase boundaries (step 7). State lives in \`plan.json\`; resuming costs one envelope, not this conversation's history.
+
 ## The loop
 
-Repeat until \`agent-flow plan show\` reports nothing actionable, or a step blocks:
-
-1. **Get the next envelope:**
+1. **Dispatch record:**
 
    \`\`\`sh
-   agent-flow next --json
+   agent-flow next --brief
    \`\`\`
 
-   Read the task id, scope files, acceptance criteria, and gates. The envelope's context pack is your briefing — prefer it over re-reading the whole repo.
+   One line: task id, title, and \`executor.model\` (the default model, or the escalation model after repeated red gates). Do not fetch the full envelope here — the executor does. (\`agent-flow next --json\` prints the full envelope when you genuinely need it.)
 
-2. **Execute the task.** Implement ONLY within the task's scope files, satisfying EVERY acceptance criterion (including \`H<n>\` hardening criteria). Write the tests the criteria demand. For independent, scope-disjoint parallel work, use \`agent-flow next --wave --json\` and spawn one executor subagent per envelope (each instructed to stay inside its scope and report results); never let two agents share a scope file.
+2. **Spawn ONE \`flow-executor\`** (subagent_type \`flow-executor\`, model = \`executor.model\`) with a prompt like:
 
-3. **Run the gates:**
+   \`\`\`text
+   Task <id>. Get your envelope with: agent-flow next --task <id> --json
+   <only when retrying:> Previous attempt: <gate tail | review findings | path to .agent-flow/handoffs/<id>.md>
+   \`\`\`
+
+   Nothing else — no repo summaries, no pasted code.
+
+   Parallel work: \`agent-flow next --wave --brief\` lists the scope-disjoint batch; spawn one \`flow-executor\` per entry in a single message. Never let two agents share a scope file.
+
+3. **Read its status block** (≤5 lines). \`handoff\` → spawn a fresh executor pointing at the handoff file. \`blocked\` → stop and report.
+
+4. **Run the gates:**
 
    \`\`\`sh
    agent-flow gate --task <id>
    \`\`\`
 
-   If a gate fails, fix the code and re-run. Do not weaken tests or acceptance criteria to make a gate pass.
+   This run is the authoritative one for escalation. Red → spawn a fresh \`flow-executor\` with the failing tail. The gate output names the next executor model; after \`escalateAfterFailures\` consecutive red attempts it escalates automatically. Do not weaken tests or acceptance criteria to make a gate pass.
 
-4. **Commit the task's work** with a conventional message, then advance:
+5. **Advance, then commit** (in this order — the gate result is keyed to the working tree, and committing first makes it stale):
 
    \`\`\`sh
    agent-flow advance --task <id>
+   git add <files from the executor status> .agent-flow/plan.json .memory && git commit -m "<type>(<scope>): <task title>"
    \`\`\`
 
-5. **Tier-1 review (when advance refuses to close a phase):** the phase needs an independent verdict.
+   Stage only the task's files and agent-flow's state — not scratch files like review prompts, handoffs or \`.agent-flow/memory.db\`.
+
+6. **Tier-1 review (when advance refuses to close a phase):** the phase needs an independent verdict. Keep the prompt and the verdict out of this conversation:
 
    \`\`\`sh
-   agent-flow review emit --phase <N> --reviewer
+   agent-flow review emit --phase <N> --reviewer > .agent-flow/review-<N>.prompt.md
    \`\`\`
 
-   Spawn a SEPARATE reviewer subagent with that prompt verbatim (plus the project path). The reviewer must be independent: do not summarize the code for it, do not hint at a verdict. Pipe its raw output back:
+   Spawn a SEPARATE \`flow-reviewer\` subagent: "Follow .agent-flow/review-<N>.prompt.md; write your JSON verdict to .agent-flow/review-<N>.verdict.json". The reviewer must be independent: do not summarize the code for it, do not hint at a verdict. Then:
 
    \`\`\`sh
-   agent-flow review record --phase <N> --from-json <reviewer-output-file or ->
+   agent-flow review record --phase <N> --from-json .agent-flow/review-<N>.verdict.json
    \`\`\`
 
-   If the verdict is \`fail\`, fix the findings, re-run gates, and re-review. Never record a verdict the reviewer did not produce.
+   If the verdict is \`fail\`, spawn a fresh executor with the findings file, re-run gates, and re-review with a fresh reviewer. Never record a verdict the reviewer did not produce.
 
-6. Go back to step 1.
+7. **Phase boundary:** when \`advance\` reports a phase complete, stop the loop. Report, and recommend \`/clear\` then \`/flow-orchestrate\` for the next phase.
 
 ## Rules
 
@@ -387,15 +409,83 @@ Repeat until \`agent-flow plan show\` reports nothing actionable, or a step bloc
 - Stay inside each task's scope. If the task needs a file outside its scope, stop and recommend editing the plan instead.
 - Surface blockers honestly: a failing gate, a fail verdict, or a scope conflict ends the loop with a clear report.
 
-Final response per session: tasks completed, gates run, review verdicts, current \`agent-flow plan show\` position.
+Final response per session: tasks completed, gates run, review verdicts, escalations, current \`agent-flow plan show\` position. To see what the session cost: \`agent-flow usage --since 1d\`.
 
 ${nextCommandRule}
 
 For orchestration, usually recommend:
 
-1. \`agent-flow plan show\` to see position
-2. \`/flow-orchestrate\` to continue the loop
+1. \`/clear\` then \`/flow-orchestrate\` to continue with the next phase
+2. \`agent-flow plan show\` to see position
 3. \`/flow-verify\` then \`/flow-close\` when stopping for the day
+`;
+}
+
+export function flowExecutorAgent(routing: ModelRouting = DEFAULT_MODEL_ROUTING): string {
+  const budget = Math.round(routing.contextBudgetTokens / 1000);
+  return `---
+name: flow-executor
+description: Implements exactly one agent-flow task from its envelope, inside its scope, until its gates are green. Spawned by /flow-orchestrate; returns a short status block, not code.
+model: ${routing.executor}
+---
+
+You implement ONE agent-flow task. Your first step: run the envelope command you were given (\`agent-flow next --task <id> --json\`). The envelope is your whole briefing: task, scope files, acceptance criteria (including \`H<n>\` hardening criteria), gates, and a budgeted context pack.
+
+Work:
+
+1. Read only what the task needs: the scope files and the specific symbols they touch. Use search and ranged reads over whole-file dumps; do not read \`.planning/\` or \`.memory/\` wholesale — the context pack already selected what matters.
+2. Implement ONLY within the scope files. Satisfy EVERY acceptance criterion and write the tests the criteria demand.
+3. Run \`agent-flow gate --task <id> --no-record\` (it prints only a short tail; \`--no-record\` keeps your own iterations from counting toward model escalation). Fix and re-run until green. Never weaken tests or criteria.
+4. Do not run \`agent-flow advance\`, do not commit, do not edit the plan — the orchestrator does that.
+
+Context budget (~${budget}k tokens): every step re-reads your whole history. If you are past roughly ${budget}k tokens of context or ~60 tool calls without green gates, stop: write \`.agent-flow/handoffs/<id>.md\` (what is done, what fails, next step, relevant files — under 40 lines) and return \`status: handoff\`.
+
+If the task needs a file outside its scope, stop and return \`status: blocked\` with the reason.
+
+Return ONLY this block (no code, no diff):
+
+\`\`\`text
+status: done | handoff | blocked
+task: <id>
+gate: green | red | not-run
+files: <changed files, comma-separated>
+notes: <at most 2 lines>
+\`\`\`
+`;
+}
+
+export function flowReviewerAgent(routing: ModelRouting = DEFAULT_MODEL_ROUTING): string {
+  return `---
+name: flow-reviewer
+description: Independent phase reviewer for agent-flow tier-1 reviews. Reads the emitted review prompt and the actual code, writes a JSON verdict file, returns one line.
+model: ${routing.reviewer}
+---
+
+You are an independent reviewer. You were given the path of a review prompt emitted by \`agent-flow review emit --reviewer\` and the path to write your verdict to.
+
+1. Read the review prompt file and follow it exactly. Judge the ACTUAL code in the listed scope files — ignore any summary or claim from the implementer.
+2. Read only what the rubric needs: scope files, their tests, and \`git diff\` / \`git log\` for the phase. Prefer ranged reads and search over whole-directory dumps.
+3. Write ONLY the JSON verdict the prompt specifies to the verdict file.
+4. Return one line: \`verdict: pass|fail — <path>\`.
+
+Default to "fail" if any criterion is unmet, untested, or unclear. Do not modify code.
+`;
+}
+
+export function flowHardenerAgent(routing: ModelRouting = DEFAULT_MODEL_ROUTING): string {
+  return `---
+name: flow-hardener
+description: One-pass domain-hardening reviewer for agent-flow plans. Reads the emitted hardening prompt, writes proposed acceptance criteria as JSON to a file, returns one line.
+model: ${routing.hardener}
+---
+
+You were given the path of a hardening prompt emitted by \`agent-flow plan harden\` and the path to write your answer to.
+
+1. Read the prompt file and follow it exactly. It already contains the plan; read source code only if a criterion genuinely depends on existing behavior.
+2. Write ONLY the JSON object the prompt specifies to the output file.
+3. Return one line: \`additions: <n> — <path>\`.
+
+Propose only missing, specific, testable criteria. Do not edit the plan yourself.
 `;
 }
 
@@ -415,18 +505,18 @@ Workflow:
 
    Pack warnings ("matches pack X but has no acceptance covering: ...") are the zero-cost baseline.
 
-2. **Emit the hardening prompt and spawn ONE reviewer subagent with it verbatim:**
+2. **Emit the hardening prompt to a file and spawn ONE \`flow-hardener\` subagent on it** (keeps the prompt out of this conversation):
 
    \`\`\`sh
-   agent-flow plan harden
+   agent-flow plan harden > .agent-flow/harden.prompt.md
    \`\`\`
 
-   The agent proposes missing acceptance criteria as strict JSON. Do not propose criteria yourself — independence is the point.
+   Prompt the subagent: "Follow .agent-flow/harden.prompt.md; write your JSON to .agent-flow/harden.additions.json". The agent proposes missing acceptance criteria as strict JSON. Do not propose criteria yourself — independence is the point.
 
-3. **Apply its raw output (prose around the JSON is fine):**
+3. **Apply its output file (prose around the JSON is fine):**
 
    \`\`\`sh
-   agent-flow plan harden --apply --from-json <file or ->
+   agent-flow plan harden --apply --from-json .agent-flow/harden.additions.json
    \`\`\`
 
 4. **Re-validate and resolve the remainder:**
