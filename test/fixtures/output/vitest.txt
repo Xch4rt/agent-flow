@@ -1,0 +1,49 @@
+
+ RUN  v3.2.4 /tmp/fx
+
+ ❯ a.test.ts (3 tests | 2 failed) 10ms
+   × math > adds 8ms
+     → expected 2 to be 3 // Object.is equality
+   ✓ math > ok 0ms
+   × math > throws 1ms
+     → boom here
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  a.test.ts > math > adds
+AssertionError: expected 2 to be 3 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 3[39m
+[31m+ 2[39m
+
+ ❯ a.test.ts:3:36
+      1| import { it, expect, describe } from 'vitest';
+      2| describe('math', () => {
+      3|   it('adds', () => { expect(1 + 1).toBe(3); });
+       |                                    ^
+      4|   it('ok', () => { expect(1).toBe(1); });
+      5|   it('throws', () => { throw new Error('boom here'); });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  a.test.ts > math > throws
+Error: boom here
+ ❯ a.test.ts:5:30
+      3|   it('adds', () => { expect(1 + 1).toBe(3); });
+      4|   it('ok', () => { expect(1).toBe(1); });
+      5|   it('throws', () => { throw new Error('boom here'); });
+       |                              ^
+      6| });
+      7| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 1 passed (3)
+   Start at  14:25:02
+   Duration  348ms (transform 84ms, setup 0ms, collect 63ms, tests 10ms, environment 0ms, prepare 80ms)
+

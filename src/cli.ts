@@ -25,6 +25,7 @@ import { runReviewEmit, runReviewRecord } from './commands/review.js';
 import { runStart } from './commands/start.js';
 import { runStatus } from './commands/status.js';
 import { runUsage } from './commands/usage.js';
+import { runRunCommand } from './commands/run.js';
 import { brandTitle } from './core/terminal-ui.js';
 import { resolveRoot } from './core/project-root.js';
 import { runDashboard } from './dashboard/dashboard.js';
@@ -272,6 +273,17 @@ export function createProgram(): Command {
     .option('--json', 'Print structured JSON')
     .action(async (options: { phase: string; verdict?: string; fromJson?: string; notes?: string; json?: boolean }) => {
       await runReviewRecord(options);
+    });
+
+  program
+    .command('run')
+    .description('Run a noisy command (tests, typecheck, lint, build) and print only the failures; the full log goes to .agent-flow/logs/.')
+    .argument('<command...>', 'Command and arguments (put them after --)')
+    .option('--max-failures <n>', 'Failures to print (default 20)')
+    .option('--json', 'Print structured JSON')
+    .allowUnknownOption()
+    .action(async (parts: string[], options: { maxFailures?: string; json?: boolean }) => {
+      await runRunCommand(parts, options);
     });
 
   program

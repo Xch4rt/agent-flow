@@ -5,6 +5,8 @@ import { execa } from 'execa';
 import { readConfig } from './config.js';
 import { detectProject } from './detect-project.js';
 import { getSmokeConfig, runSmoke } from './smoke.js';
+import { compactOutput, formatCompact } from './compact-output.js';
+import { writeLog } from './run-compact.js';
 
 export type GateResult = {
   name: string;
@@ -88,7 +90,14 @@ export async function runGate(
 
   const result = await execa(command, { cwd: root, shell: true, reject: false, all: true });
   const all = typeof result.all === 'string' ? result.all : '';
-  const outputTail = all.trim().split('\n').slice(-12).join('\n');
+  // Agents read this: keep only the failures (parsed per tool), full log on disk.
+  let outputTail: string;
+  if (result.exitCode === 0) {
+    outputTail = all.trim().split('\n').slice(-3).join('\n');
+  } else {
+    const logPath = await writeLog(root, `gate-${name}`, `$ ${command}\n# exit ${result.exitCode ?? '?'}\n\n${all}`).catch(() => null);
+    outputTail = [formatCompact(compactOutput(all)), logPath ? `full log: ${logPath}` : ''].filter(Boolean).join('\n');
+  }
 
   return {
     name,
