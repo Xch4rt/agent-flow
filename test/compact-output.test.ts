@@ -49,6 +49,14 @@ describe('compactOutput parsers', () => {
     expect(out.summary).toBe('1 failed, 2 passed in 0.12s');
   });
 
+  it('node:test, TAP and spec reporters', () => {
+    const tap = compactOutput(fixture('node-test-tap.txt'));
+    expect(tap).toMatchObject({ tool: 'node-test', summary: '1 passed, 1 failed' });
+    expect(tap.failures[0]).toMatch(/^adds \(.*a\.test\.mjs:2:1\) — Expected values to be strictly equal: 2 !== 3$/);
+    const spec = compactOutput(fixture('node-test-spec.txt'));
+    expect(spec.failures[0]).toMatch(/^adds \(a\.test\.mjs:2:1\) — AssertionError \[ERR_ASSERTION\]: Expected values to be strictly equal: 2 !== 3$/);
+  });
+
   it('falls back to the tail for unknown tools', () => {
     const out = compactOutput(Array.from({ length: 50 }, (_, i) => `line ${i}`).join('\n'));
     expect(out.tool).toBe('generic');

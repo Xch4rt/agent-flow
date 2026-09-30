@@ -7,7 +7,7 @@
  * keep the full log on disk for the rare case it is needed.
  */
 
-export type ToolKind = 'vitest' | 'jest' | 'tsc' | 'eslint' | 'pytest' | 'generic';
+export type ToolKind = 'vitest' | 'jest' | 'tsc' | 'eslint' | 'pytest' | 'node-test' | 'generic';
 
 export type CompactOutput = {
   tool: ToolKind;
@@ -115,7 +115,52 @@ function parsePytest(lines: string[]): Omit<CompactOutput, 'tail'> | null {
   return { tool: 'pytest', failures, summary };
 }
 
-const PARSERS: Array<(lines: string[]) => Omit<CompactOutput, 'tail'> | null> = [parsePytest, parseJest, parseVitest, parseEslint, parseTsc];
+/** First non-empty line from `from`; when it ends with ':' also append the next one ("…equal: 2 !== 3"). */
+function withDetail(lines: string[], from: number): string {
+  const rest = lines.slice(from, from + 8).map((l) => l.trim()).filter(Boolean);
+  if (rest.length === 0) return '';
+  return rest[0].endsWith(':') && rest[1] && !rest[1].startsWith('at ') ? `${rest[0]} ${rest[1]}` : rest[0];
+}
+
+function parseNodeTest(lines: string[]): Omit<CompactOutput, 'tail'> | null {
+  const tap = lines.some((l) => /^# (pass|fail) \d+/.test(l));
+  const spec = lines.some((l) => /^ℹ (pass|fail) \d+/.test(l));
+  if (!tap && !spec) return null;
+  const failures: string[] = [];
+  if (tap) {
+    for (let i = 0; i < lines.length; i += 1) {
+      const m = /^\s*not ok \d+ - (.+)$/.exec(lines[i]);
+      if (!m) continue;
+      let where = '';
+      let why = '';
+      for (let j = i + 1; j < Math.min(lines.length, i + 30); j += 1) {
+        const line = lines[j];
+        if (/^\s*\.\.\.\s*$/.test(line)) break;
+        const loc = /location:\s*'(.+)'/.exec(line);
+        if (loc) where = loc[1];
+        if (/^\s*error:/.test(line)) {
+          const inline = line.replace(/^\s*error:\s*(\|-?)?/, '').trim();
+          why = inline || withDetail(lines, j + 1);
+        }
+      }
+      failures.push(clip(`${m[1].trim()}${where ? ` (${where})` : ''} — ${why || 'failed'}`));
+    }
+  } else {
+    const start = lines.findIndex((l) => /^✖ failing tests:/.test(l.trim()));
+    for (let i = Math.max(0, start); start >= 0 && i < lines.length; i += 1) {
+      const at = /^test at (.+)$/.exec(lines[i].trim());
+      if (!at) continue;
+      const name = (/^✖ (.+?)(?: \([\d.]+m?s\))?$/.exec(lines[i + 1]?.trim() ?? '') ?? [])[1] ?? 'test';
+      const why = withDetail(lines, i + 2);
+      failures.push(clip(`${name} (${at[1]}) — ${why || 'failed'}`));
+    }
+  }
+  const pick = (key: string) => lines.map((l) => new RegExp(`^(?:#|ℹ) ${key} (\\d+)`).exec(l)).find(Boolean)?.[1];
+  const summary = `${pick('pass') ?? '?'} passed, ${pick('fail') ?? '?'} failed`;
+  return { tool: 'node-test', failures, summary };
+}
+
+const PARSERS: Array<(lines: string[]) => Omit<CompactOutput, 'tail'> | null> = [parseNodeTest, parsePytest, parseJest, parseVitest, parseEslint, parseTsc];
 
 export function compactOutput(raw: string, options: { tailLines?: number } = {}): CompactOutput {
   const text = stripAnsi(raw);
