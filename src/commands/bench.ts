@@ -3,6 +3,7 @@ import fs from 'fs-extra';
 import pc from 'picocolors';
 import {
   defaultBenchDir,
+  discardBenchRun,
   finishBenchRun,
   formatBenchMarkdown,
   loadBenchResults,
@@ -27,12 +28,20 @@ export async function runBenchPrepare(taskDir: string, options: { variant: strin
   console.log(section('Now:'));
   console.log(`  1) ${pc.cyan(`cd ${run.workspace} && claude`)}`);
   console.log(`  2) run the "${run.variant}" workflow on this prompt (${path.relative(process.cwd(), spec.prompt) || spec.prompt}) — same model for every variant`);
-  console.log(`  3) when the agent is done: ${pc.cyan(`agent-flow bench finish ${runDir}`)}`);
+  console.log(`  3) when the agent is done, exit Claude and from a normal terminal run: ${pc.cyan(`agent-flow bench finish ${runDir}`)}`);
   console.log(pc.dim('Hidden acceptance tests are copied in only at finish; the agent never sees them.'));
+  console.log(pc.dim('Do not run finish from a Claude session inside the workspace: that session\'s tokens would be counted for the variant.'));
 }
 
-export async function runBenchFinish(runDir: string, options: { json?: boolean } = {}): Promise<void> {
-  const result = await finishBenchRun(runDir);
+export async function runBenchFinish(runDir: string, options: { json?: boolean; force?: boolean } = {}): Promise<void> {
+  let result;
+  try {
+    result = await finishBenchRun(runDir, { force: options.force });
+  } catch (error) {
+    console.log(`${statusLabel('fail')} ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+    return;
+  }
   if (options.json) {
     console.log(JSON.stringify(result));
     return;
@@ -45,6 +54,11 @@ export async function runBenchFinish(runDir: string, options: { json?: boolean }
   console.log(keyValue('Tokens:', `≈${u.inputEq.toLocaleString()} input-eq · cache read ${u.totals.cacheRead.toLocaleString()} · peak context ${u.peakContext.toLocaleString()} · ${u.sessions} session(s)`));
   if (u.sessions === 0) console.log(pc.yellow('No Claude Code transcripts found for this workspace — was the agent started inside it?'));
   console.log(`Report: ${pc.cyan('agent-flow bench report')}`);
+}
+
+export async function runBenchDiscard(runDir: string): Promise<void> {
+  await discardBenchRun(runDir);
+  console.log(`${statusLabel('ok')} discarded ${runDir}`);
 }
 
 export async function runBenchReport(options: { dir?: string; task?: string; json?: boolean; out?: string } = {}): Promise<void> {

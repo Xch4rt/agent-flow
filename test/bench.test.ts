@@ -2,7 +2,7 @@ import path from 'node:path';
 import os from 'node:os';
 import fs from 'fs-extra';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { finishBenchRun, formatBenchMarkdown, loadBenchResults, loadBenchSpec, median, prepareBenchRun, summarizeBench } from '../src/core/bench.js';
+import { discardBenchRun, finishBenchRun, formatBenchMarkdown, loadBenchResults, loadBenchSpec, median, prepareBenchRun, summarizeBench } from '../src/core/bench.js';
 import { projectSlug } from '../src/core/claude-usage.js';
 import { runBenchReport } from '../src/commands/bench.js';
 
@@ -65,9 +65,26 @@ describe('bench', () => {
     expect(await fs.pathExists(path.join(path.dirname(run.workspace), 'result.json'))).toBe(true);
   });
 
+  it('refuses to record an untouched workspace unless forced, and refuses to finish twice', async () => {
+    const run = await prepareBenchRun(TASK, 'gsd', { benchDir });
+    const runDir = path.dirname(run.workspace);
+    await expect(finishBenchRun(runDir, { claudeDir })).rejects.toThrow(/unchanged since the seed/);
+    expect(await fs.pathExists(path.join(runDir, 'result.json'))).toBe(false);
+    // Hidden tests were not copied in by the refused finish.
+    expect(await fs.pathExists(path.join(run.workspace, 'test', 'acceptance.hidden.test.js'))).toBe(false);
+
+    await fs.copy(REFERENCE, path.join(run.workspace, 'src', 'slugify.js'));
+    await finishBenchRun(runDir, { claudeDir });
+    await expect(finishBenchRun(runDir, { claudeDir })).rejects.toThrow(/already finished/);
+
+    await discardBenchRun(runDir);
+    expect(await fs.pathExists(runDir)).toBe(false);
+    expect(await loadBenchResults(benchDir)).toHaveLength(0);
+  }, 20_000);
+
   it('a variant that does not implement the task fails the hidden tests', async () => {
     const run = await prepareBenchRun(TASK, 'plain', { benchDir });
-    const result = await finishBenchRun(path.dirname(run.workspace), { claudeDir });
+    const result = await finishBenchRun(path.dirname(run.workspace), { claudeDir, force: true });
     expect(result.passed).toBe(false);
     expect(result.check.failures).toBeGreaterThan(0);
     expect(result.usage.sessions).toBe(0);

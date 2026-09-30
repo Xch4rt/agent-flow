@@ -28,7 +28,7 @@ import { runUsage } from './commands/usage.js';
 import { runRunCommand } from './commands/run.js';
 import { runGuard } from './commands/guard.js';
 import { runDoctorTokens } from './commands/doctor-tokens.js';
-import { runBenchFinish, runBenchPrepare, runBenchReport } from './commands/bench.js';
+import { runBenchDiscard, runBenchFinish, runBenchPrepare, runBenchReport } from './commands/bench.js';
 import { brandTitle } from './core/terminal-ui.js';
 import { resolveRoot } from './core/project-root.js';
 import { runDashboard } from './dashboard/dashboard.js';
@@ -298,10 +298,19 @@ export function createProgram(): Command {
   bench
     .command('finish')
     .argument('<run-dir>', 'Run folder printed by bench prepare')
+    .option('--force', 'Record even if the workspace is unchanged, or re-record a finished run')
     .option('--json', 'Print structured JSON')
     .description('Copy in the hidden tests, run the check, and record tokens used in the workspace.')
-    .action(async (runDir: string, options: { json?: boolean }) => {
+    .action(async (runDir: string, options: { json?: boolean; force?: boolean }) => {
       await runBenchFinish(runDir, options);
+    });
+
+  bench
+    .command('discard')
+    .argument('<run-dir>', 'Run folder to remove from reports')
+    .description('Delete a run (workspace and result) so it no longer counts.')
+    .action(async (runDir: string) => {
+      await runBenchDiscard(runDir);
     });
 
   bench

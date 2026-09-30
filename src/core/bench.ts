@@ -116,11 +116,25 @@ export async function prepareBenchRun(taskDir: string, variant: string, options:
   return { ...run, setup };
 }
 
-export async function finishBenchRun(runDir: string, options: { claudeDir?: string; now?: Date } = {}): Promise<BenchResult> {
+/** True when the agent changed nothing since the seed commit (no new commits, clean tree). */
+export async function workspaceUnchanged(workspace: string): Promise<boolean> {
+  const commits = await execa('git', ['rev-list', '--count', 'HEAD'], { cwd: workspace, reject: false });
+  const status = await execa('git', ['status', '--porcelain'], { cwd: workspace, reject: false });
+  const count = Number.parseInt(String(commits.stdout ?? '').trim(), 10);
+  return count <= 1 && String(status.stdout ?? '').trim() === '';
+}
+
+export async function finishBenchRun(runDir: string, options: { claudeDir?: string; now?: Date; force?: boolean } = {}): Promise<BenchResult> {
   const dir = path.resolve(runDir);
   const run = (await fs.readJson(path.join(dir, 'run.json'))) as BenchRun;
   const spec = await loadBenchSpec(run.taskDir);
   const finishedAt = options.now ?? new Date();
+  if (await fs.pathExists(path.join(dir, 'result.json')) && !options.force) {
+    throw new Error(`run already finished: ${dir} (use --force to re-record)`);
+  }
+  if (!options.force && (await workspaceUnchanged(run.workspace))) {
+    throw new Error(`workspace is unchanged since the seed — did the agent run? Nothing was recorded. Run the variant first, or pass --force to record it as-is.\n  ${run.workspace}`);
+  }
 
   // Hidden acceptance tests go in only now, after the agent is done.
   await fs.copy(spec.hiddenDir, run.workspace, { overwrite: true });
@@ -157,6 +171,13 @@ export async function finishBenchRun(runDir: string, options: { claudeDir?: stri
   };
   await fs.writeJson(path.join(dir, 'result.json'), result, { spaces: 2 });
   return result;
+}
+
+/** Remove a run (workspace + result) so it no longer counts in reports. */
+export async function discardBenchRun(runDir: string): Promise<void> {
+  const dir = path.resolve(runDir);
+  if (!(await fs.pathExists(path.join(dir, 'run.json')))) throw new Error(`not a bench run (missing run.json): ${dir}`);
+  await fs.remove(dir);
 }
 
 export async function loadBenchResults(benchDir = defaultBenchDir(), task?: string): Promise<BenchResult[]> {
