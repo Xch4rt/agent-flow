@@ -5,6 +5,7 @@
 ### Observed usage
 
 - New `agent-flow usage`: parses Claude Code transcripts for the current project (or `--all`) and reports observed input / cache write / cache read / output per session, main thread vs subagents, per model and per skill, peak context, and large cache writes classified as idle-gap rewrites, prefix changes or first requests. Establishes a real baseline instead of chars/4 estimates.
+- `usage` breaks subagent cost down by agent type (from `agent-*.meta.json` or the parent `Agent`/`Task` call), lists the heaviest individual subagents with their peak context and idle rewrites, counts `SendMessage` continuations, adds a per-project breakdown and the average context re-read per request.
 
 ### Budget coherence
 

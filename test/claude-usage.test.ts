@@ -122,7 +122,7 @@ describe('buildUsageReport', () => {
     expect(report.bySkill['flow-orchestrate'].calls).toBe(2);
     expect(report.bySkill['(no skill)'].calls).toBe(2);
     expect(report.bySkill['flow-close'].calls).toBe(2);
-    expect(report.bySkill['(subagent)'].calls).toBe(1);
+    expect(report.bySkill['agent:unknown'].calls).toBe(1);
     expect(report.byModel['claude-opus-test'].calls).toBe(7);
     expect(inputEquivalent(report.totals)).toBeGreaterThan(0);
 
@@ -151,6 +151,48 @@ describe('buildUsageReport', () => {
     expect(report.sessions[0].subagents.calls).toBe(1);
     expect(report.sessions[0].main.calls).toBe(1);
     expect(report.sessions[0].file).toBe(main);
+  });
+
+  it('types subagents from meta.json or the parent Agent call, and counts SendMessage continuations', async () => {
+    const main = await writeTranscript([
+      user('2026-09-30T10:00:00Z', 'write the docs'),
+      assistant('r1', '2026-09-30T10:00:05Z', { input: 10, write: 1_000, output: 10 }, {}, [
+        { type: 'tool_use', id: 'tu_author', name: 'Agent', input: { subagent_type: 'content-author', description: 'write', prompt: '...' } },
+        { type: 'tool_use', id: 'tu_rev', name: 'Agent', input: { subagent_type: 'technical-reviewer', description: 'review', prompt: '...' } },
+      ]),
+      { type: 'user', sessionId: SESSION, timestamp: '2026-09-30T10:00:06Z', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu_rev', content: 'launched' }] }, toolUseResult: { isAsync: true, agentId: 'bbb222', status: 'async_launched' } },
+      assistant('r2', '2026-09-30T10:10:00Z', { input: 1, read: 1_000, output: 5 }, {}, [
+        { type: 'tool_use', id: 'tu_s1', name: 'SendMessage', input: { to: 'aaa111', message: 'address the review' } },
+        { type: 'tool_use', id: 'tu_s2', name: 'SendMessage', input: { to: 'aaa111', message: 'again' } },
+      ]),
+    ]);
+    const dir = path.join(path.dirname(main), SESSION, 'subagents');
+    // Author: typed by meta.json; its thread goes idle 30 minutes and re-writes a big context.
+    await writeTranscript([
+      assistant('a1', '2026-09-30T10:00:10Z', { input: 5, write: 30_000, output: 50 }),
+      assistant('a2', '2026-09-30T10:30:10Z', { input: 5, write: 300_000, output: 50 }),
+    ], path.join(dir, 'agent-aaa111.jsonl'));
+    await fs.writeJson(path.join(dir, 'agent-aaa111.meta.json'), { agentType: 'content-author' });
+    // Reviewer: no meta.json, typed through the parent's Agent tool_use + toolUseResult.agentId.
+    await writeTranscript([assistant('b1', '2026-09-30T10:00:20Z', { input: 5, write: 25_000, output: 50 })], path.join(dir, 'agent-bbb222.jsonl'));
+
+    const { files } = await findTranscriptFiles({ projectPath: PROJECT, dir: tmpDir });
+    const report = await buildUsageReport(files, tmpDir);
+
+    expect(report.spawns).toBe(2);
+    expect(report.continuations).toBe(2);
+    expect(report.byAgentType['content-author']).toMatchObject({ agents: 1, continuations: 2, idleRewriteTokens: 300_000 });
+    expect(report.byAgentType['technical-reviewer'].agents).toBe(1);
+    expect(report.bySkill['agent:content-author'].calls).toBe(2);
+    const author = report.agents.find((a) => a.agentId === 'aaa111');
+    expect(author).toMatchObject({ type: 'content-author', idleRewrites: 1, peakContext: 300_005 });
+    expect(report.byProject[PROJECT].sessions).toBe(1);
+
+    const text = formatUsageReport(report);
+    expect(text).toContain('Subagents by type');
+    expect(text).toContain('content-author');
+    expect(text).toContain('SendMessage continuations 2');
+    expect(text).toContain('grew past 200k context');
   });
 
   it('respects --since at the request level', async () => {

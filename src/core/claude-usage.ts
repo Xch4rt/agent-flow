@@ -45,10 +45,49 @@ export type SessionUsage = {
   byModel: Record<string, UsageTotals>;
 };
 
+export type SubagentUsage = {
+  agentId: string;
+  sessionId: string;
+  type: string;
+  cwd?: string;
+  first?: string;
+  last?: string;
+  totals: UsageTotals;
+  /** Largest single-request context this agent carried. */
+  peakContext: number;
+  /** Cache rewrites after an idle gap inside this agent's own thread. */
+  idleRewrites: number;
+  idleRewriteTokens: number;
+  /** SendMessage calls addressed to this agent (continuations instead of a fresh spawn). */
+  continuations: number;
+};
+
+export type AgentTypeUsage = {
+  agents: number;
+  continuations: number;
+  totals: UsageTotals;
+  peakContext: number;
+  idleRewriteTokens: number;
+};
+
+export type ProjectUsage = {
+  sessions: number;
+  totals: UsageTotals;
+  main: UsageTotals;
+  subagents: UsageTotals;
+  peakContext: number;
+  idleRewriteTokens: number;
+};
+
 export type UsageReport = {
   source: string;
   files: number;
   sessions: SessionUsage[];
+  byProject: Record<string, ProjectUsage>;
+  byAgentType: Record<string, AgentTypeUsage>;
+  agents: SubagentUsage[];
+  spawns: number;
+  continuations: number;
   totals: UsageTotals;
   main: UsageTotals;
   subagents: UsageTotals;
@@ -170,11 +209,49 @@ type ParsedCall = {
   sessionId: string;
   at: string;
   sidechain: boolean;
+  agentId?: string;
   thread: string;
   model: string;
   skill: string;
   usage: UsageTotals;
 };
+
+const SPAWN_TOOLS = new Set(['Agent', 'Task']);
+
+type ParsedTranscript = {
+  calls: ParsedCall[];
+  cwd?: string;
+  sessionId?: string;
+  /** agentId -> subagent type, learned from the parent's Agent/Task tool_use + its result. */
+  agentTypes: Record<string, string>;
+  /** SendMessage continuations per target (agent id or name). */
+  continuations: Record<string, number>;
+  spawns: number;
+};
+
+function firstString(record: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value) return value;
+  }
+  return undefined;
+}
+
+/** Subagent id encoded in Claude Code's per-agent transcript file name (`agent-<id>.jsonl`). */
+export function agentIdFromFile(file: string): string | undefined {
+  return /agent-([^\\/]+)\.jsonl$/.exec(file)?.[1];
+}
+
+async function readAgentMetaType(file: string): Promise<string | undefined> {
+  const metaFile = file.replace(/\.jsonl$/, '.meta.json');
+  if (metaFile === file || !(await fs.pathExists(metaFile))) return undefined;
+  try {
+    const meta = await fs.readJson(metaFile);
+    return isRecord(meta) ? firstString(meta, ['agentType', 'subagentType', 'subagent_type', 'type', 'name']) : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 const COMMAND_NAME = /<command-name>\s*\/?([^<\s]+)\s*<\/command-name>/;
 
@@ -217,13 +294,22 @@ function skillInvokedBy(message: unknown): string | null {
  * for every block of a response, so calls are keyed by requestId/message.id.
  * Subagent turns are marked `isSidechain` (inline, or in a separate file).
  */
-export async function parseTranscript(file: string, since?: Date): Promise<{ calls: ParsedCall[]; cwd?: string; sessionId?: string }> {
+export async function parseTranscript(file: string, since?: Date): Promise<ParsedTranscript> {
   const calls = new Map<string, ParsedCall>();
   const activeSkill = new Map<string, string>();
+  const spawnTypes = new Map<string, string>();
+  const agentTypes: Record<string, string> = {};
+  const continuations: Record<string, number> = {};
+  let spawns = 0;
   let cwd: string | undefined;
   let fileSessionId: string | undefined;
   const cutoff = since?.getTime();
-  const fileIsSubagent = /(^|[\\/])(subagents|agent-[^\\/]*\.jsonl$)/.test(file);
+  const fileAgentId = agentIdFromFile(file);
+  const fileIsSubagent = Boolean(fileAgentId) || /(^|[\\/])subagents[\\/]/.test(file);
+  if (fileAgentId) {
+    const metaType = await readAgentMetaType(file);
+    if (metaType) agentTypes[fileAgentId] = metaType;
+  }
 
   const rl = readline.createInterface({ input: fs.createReadStream(file, 'utf8'), crlfDelay: Infinity });
   for await (const line of rl) {
@@ -241,7 +327,18 @@ export async function parseTranscript(file: string, since?: Date): Promise<{ cal
     if (sessionId && !fileSessionId) fileSessionId = sessionId;
     if (!cwd && typeof row.cwd === 'string') cwd = row.cwd;
     const sidechain = row.isSidechain === true || fileIsSubagent;
-    const thread = sidechain ? `side:${typeof row.agentId === 'string' ? row.agentId : file}` : 'main';
+    const agentId = fileAgentId ?? (typeof row.agentId === 'string' ? row.agentId : undefined);
+    const thread = sidechain ? `side:${agentId ?? file}` : 'main';
+
+    // Link spawned agents to their type: the tool_result row carries toolUseResult.agentId.
+    if (row.type === 'user' && isRecord(row.toolUseResult) && typeof row.toolUseResult.agentId === 'string' && isRecord(row.message) && Array.isArray(row.message.content)) {
+      for (const block of row.message.content) {
+        if (isRecord(block) && block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
+          const type = spawnTypes.get(block.tool_use_id);
+          if (type && !agentTypes[row.toolUseResult.agentId]) agentTypes[row.toolUseResult.agentId] = type;
+        }
+      }
+    }
 
     if (row.type === 'user') {
       const text = userPromptText(row.message);
@@ -258,6 +355,21 @@ export async function parseTranscript(file: string, since?: Date): Promise<{ cal
     const invoked = skillInvokedBy(message);
     if (invoked && !sidechain) activeSkill.set(thread, invoked);
 
+    if (Array.isArray(message.content)) {
+      for (const block of message.content) {
+        if (!isRecord(block) || block.type !== 'tool_use' || !isRecord(block.input)) continue;
+        const name = String(block.name ?? '');
+        if (SPAWN_TOOLS.has(name)) {
+          spawns += 1;
+          const type = firstString(block.input, ['subagent_type', 'subagentType', 'agent_type']) ?? 'general-purpose';
+          if (typeof block.id === 'string') spawnTypes.set(block.id, type);
+        } else if (name === 'SendMessage') {
+          const target = firstString(block.input, ['to', 'agentId', 'agent_id', 'target', 'name', 'recipient']) ?? '?';
+          continuations[target] = (continuations[target] ?? 0) + 1;
+        }
+      }
+    }
+
     const usage = message.usage as RawUsage | undefined;
     if (!isRecord(usage)) continue;
     const at = typeof row.timestamp === 'string' ? row.timestamp : '';
@@ -269,6 +381,7 @@ export async function parseTranscript(file: string, since?: Date): Promise<{ cal
       sessionId: sessionId ?? fileSessionId ?? path.basename(file, '.jsonl'),
       at,
       sidechain,
+      agentId: sidechain ? agentId : undefined,
       thread,
       model: typeof message.model === 'string' ? message.model : 'unknown',
       skill: sidechain ? '(subagent)' : activeSkill.get(thread) ?? '(no skill)',
@@ -291,7 +404,7 @@ export async function parseTranscript(file: string, since?: Date): Promise<{ cal
     calls.set(key, call);
   }
 
-  return { calls: [...calls.values()], cwd, sessionId: fileSessionId };
+  return { calls: [...calls.values()], cwd, sessionId: fileSessionId, agentTypes, continuations, spawns };
 }
 
 // ---------------------------------------------------------------------------
@@ -345,17 +458,79 @@ export function summarizeCalls(calls: ParsedCall[], meta: { file: string; cwd?: 
   return session;
 }
 
+function summarizeAgents(
+  calls: ParsedCall[],
+  sessionId: string,
+  cwd: string | undefined,
+  agentTypes: Record<string, string>,
+  continuations: Record<string, number>,
+  options: UsageOptions,
+): SubagentUsage[] {
+  const idleMinutes = options.idleMinutes ?? 5;
+  const breakThreshold = options.breakThreshold ?? 20_000;
+  const byAgent = new Map<string, ParsedCall[]>();
+  for (const call of calls) {
+    if (!call.sidechain) continue;
+    const id = call.agentId ?? '(inline)';
+    byAgent.set(id, [...(byAgent.get(id) ?? []), call]);
+  }
+  const out: SubagentUsage[] = [];
+  for (const [agentId, agentCalls] of byAgent) {
+    agentCalls.sort((a, b) => a.at.localeCompare(b.at));
+    const agent: SubagentUsage = {
+      agentId,
+      sessionId,
+      type: agentTypes[agentId] ?? 'unknown',
+      cwd,
+      first: agentCalls[0]?.at,
+      last: agentCalls[agentCalls.length - 1]?.at,
+      totals: emptyTotals(),
+      peakContext: 0,
+      idleRewrites: 0,
+      idleRewriteTokens: 0,
+      continuations: 0,
+    };
+    let prev: number | undefined;
+    for (const call of agentCalls) {
+      addTotals(agent.totals, call.usage);
+      agent.peakContext = Math.max(agent.peakContext, contextOf(call.usage));
+      const time = Date.parse(call.at);
+      if (prev !== undefined && !Number.isNaN(time) && call.usage.cacheWrite >= breakThreshold && (time - prev) / 60_000 >= idleMinutes) {
+        agent.idleRewrites += 1;
+        agent.idleRewriteTokens += call.usage.cacheWrite;
+      }
+      if (!Number.isNaN(time)) prev = time;
+    }
+    // SendMessage may address an agent by id or by the name it was spawned with; match either.
+    agent.continuations = Object.entries(continuations)
+      .filter(([target]) => target === agentId || agentId.startsWith(target) || target.startsWith(agentId))
+      .reduce((sum, [, n]) => sum + n, 0);
+    out.push(agent);
+  }
+  return out;
+}
+
 export async function buildUsageReport(
   files: string[],
   source: string,
   options: UsageOptions = {},
 ): Promise<UsageReport> {
   // Subagent transcripts may live in their own files; group every call by session id.
-  const bySession = new Map<string, { calls: ParsedCall[]; file: string; cwd?: string }>();
+  const bySession = new Map<string, { calls: ParsedCall[]; file: string; cwd?: string; continuations: Record<string, number> }>();
+  const agentTypes: Record<string, string> = {};
+  let spawns = 0;
   for (const file of files) {
     const parsed = await parseTranscript(file, options.since);
+    Object.assign(agentTypes, parsed.agentTypes);
+    spawns += parsed.spawns;
+    const sessionKey = parsed.sessionId ?? parsed.calls[0]?.sessionId;
+    if (sessionKey && Object.keys(parsed.continuations).length > 0) {
+      const entry = bySession.get(sessionKey) ?? { calls: [], file, cwd: parsed.cwd, continuations: {} };
+      for (const [k, v] of Object.entries(parsed.continuations)) entry.continuations[k] = (entry.continuations[k] ?? 0) + v;
+      bySession.set(sessionKey, entry);
+    }
     for (const call of parsed.calls) {
-      const entry = bySession.get(call.sessionId) ?? { calls: [], file, cwd: parsed.cwd };
+      const entry = bySession.get(call.sessionId) ?? { calls: [], file, cwd: parsed.cwd, continuations: {} };
       if (!entry.cwd && parsed.cwd) entry.cwd = parsed.cwd;
       // Prefer the main (non-subagent) file as the session's file.
       if (!call.sidechain) entry.file = file;
@@ -365,17 +540,31 @@ export async function buildUsageReport(
   }
 
   const sessions: SessionUsage[] = [];
+  const agents: SubagentUsage[] = [];
+  let continuations = 0;
   for (const [sessionId, entry] of bySession) {
+    if (entry.calls.length === 0) continue;
     // Deduplicate across files (a subagent response can be mirrored in both).
-    const unique = new Map(entry.calls.map((c) => [c.key, c]));
-    sessions.push(summarizeCalls([...unique.values()], { file: entry.file, cwd: entry.cwd, sessionId }, options));
+    const unique = [...new Map(entry.calls.map((c) => [c.key, c])).values()];
+    for (const call of unique) {
+      if (call.sidechain) call.skill = `agent:${(call.agentId && agentTypes[call.agentId]) ?? 'unknown'}`;
+    }
+    sessions.push(summarizeCalls(unique, { file: entry.file, cwd: entry.cwd, sessionId }, options));
+    agents.push(...summarizeAgents(unique, sessionId, entry.cwd, agentTypes, entry.continuations, options));
+    continuations += Object.values(entry.continuations).reduce((a, b) => a + b, 0);
   }
   sessions.sort((a, b) => inputEquivalent(b.totals) - inputEquivalent(a.totals));
+  agents.sort((a, b) => inputEquivalent(b.totals) - inputEquivalent(a.totals));
 
   const report: UsageReport = {
     source,
     files: files.length,
     sessions,
+    byProject: {},
+    byAgentType: {},
+    agents,
+    spawns,
+    continuations,
     totals: emptyTotals(),
     main: emptyTotals(),
     subagents: emptyTotals(),
@@ -391,6 +580,24 @@ export async function buildUsageReport(
     for (const [k, v] of Object.entries(s.byModel)) addTotals((report.byModel[k] ??= emptyTotals()), v);
     for (const [k, v] of Object.entries(s.bySkill)) addTotals((report.bySkill[k] ??= emptyTotals()), v);
     report.cacheBreaks.push(...s.cacheBreaks);
+
+    const project = (report.byProject[s.cwd ?? '(unknown)'] ??= {
+      sessions: 0, totals: emptyTotals(), main: emptyTotals(), subagents: emptyTotals(), peakContext: 0, idleRewriteTokens: 0,
+    });
+    project.sessions += 1;
+    addTotals(project.totals, s.totals);
+    addTotals(project.main, s.main);
+    addTotals(project.subagents, s.subagents);
+    project.peakContext = Math.max(project.peakContext, s.peakContext);
+    project.idleRewriteTokens += s.cacheBreaks.filter((b) => b.reason === 'idle').reduce((sum, b) => sum + b.cacheWrite, 0);
+  }
+  for (const agent of agents) {
+    const type = (report.byAgentType[agent.type] ??= { agents: 0, continuations: 0, totals: emptyTotals(), peakContext: 0, idleRewriteTokens: 0 });
+    type.agents += 1;
+    type.continuations += agent.continuations;
+    addTotals(type.totals, agent.totals);
+    type.peakContext = Math.max(type.peakContext, agent.peakContext);
+    type.idleRewriteTokens += agent.idleRewriteTokens;
   }
   report.cacheBreaks.sort((a, b) => b.cacheWrite - a.cacheWrite);
   return report;

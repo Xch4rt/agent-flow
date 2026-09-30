@@ -42,6 +42,10 @@ function totalsLine(t: UsageTotals): string {
   return `calls ${t.calls} · input ${fmt(t.input)} · cache write ${fmt(t.cacheWrite)} · cache read ${fmt(t.cacheRead)} · output ${fmt(t.output)} · ${pc.bold(`≈${fmt(inputEquivalent(t))} input-eq`)}`;
 }
 
+function avgContext(t: UsageTotals): number {
+  return t.calls > 0 ? (t.input + t.cacheWrite + t.cacheRead) / t.calls : 0;
+}
+
 function shortTime(iso: string | undefined): string {
   if (!iso) return '?';
   const d = new Date(iso);
@@ -69,7 +73,35 @@ export function formatUsageReport(report: UsageReport, top = 10): string {
   lines.push(section('Main thread vs subagents'));
   lines.push(`  main       ${pct(inputEquivalent(report.main), all).padStart(4)}  ${totalsLine(report.main)}`);
   lines.push(`  subagents  ${pct(inputEquivalent(report.subagents), all).padStart(4)}  ${totalsLine(report.subagents)}`);
+  lines.push(`  avg context per request: main ${fmt(avgContext(report.main))} · subagents ${fmt(avgContext(report.subagents))}  ${pc.dim('(what every turn re-reads)')}`);
+  if (report.spawns > 0 || report.continuations > 0) {
+    lines.push(`  subagents spawned ${report.spawns} · SendMessage continuations ${report.continuations}  ${pc.dim('(a continuation re-reads the agent\'s whole history)')}`);
+  }
   lines.push('');
+
+  const projects = Object.entries(report.byProject).sort((a, b) => inputEquivalent(b[1].totals) - inputEquivalent(a[1].totals));
+  if (projects.length > 1) {
+    lines.push(section('By project'));
+    for (const [cwd, p] of projects.slice(0, top)) {
+      lines.push(`  ${pct(inputEquivalent(p.totals), all).padStart(4)}  ${cwd}  ${pc.dim(`sessions ${p.sessions} · subagents ${pct(inputEquivalent(p.subagents), inputEquivalent(p.totals))} · peak ${fmt(p.peakContext)} · avg main ctx ${fmt(avgContext(p.main))} · idle rewrites ${fmt(p.idleRewriteTokens)}`)}`);
+    }
+    lines.push('');
+  }
+
+  const types = Object.entries(report.byAgentType).sort((a, b) => inputEquivalent(b[1].totals) - inputEquivalent(a[1].totals));
+  if (types.length > 0) {
+    lines.push(section('Subagents by type'));
+    for (const [type, t] of types.slice(0, top)) {
+      const perAgent = t.agents > 0 ? t.totals.calls / t.agents : 0;
+      lines.push(`  ${pct(inputEquivalent(t.totals), all).padStart(4)}  ${type}  ${pc.dim(`agents ${t.agents} · ${Math.round(perAgent)} requests/agent · avg ctx ${fmt(avgContext(t.totals))} · peak ${fmt(t.peakContext)} · continuations ${t.continuations} · idle rewrites ${fmt(t.idleRewriteTokens)}`)}`);
+    }
+    lines.push('');
+    lines.push(section(`Heaviest subagents (top ${Math.min(top, report.agents.length)})`));
+    for (const a of report.agents.slice(0, top)) {
+      lines.push(`  ${a.agentId.slice(0, 10)}  ${a.type}  ≈${fmt(inputEquivalent(a.totals))} input-eq · requests ${a.totals.calls} · peak ${fmt(a.peakContext)} · ${shortTime(a.first)} → ${shortTime(a.last)} · idle rewrites ${a.idleRewrites}${a.continuations ? ` · continuations ${a.continuations}` : ''}`);
+    }
+    lines.push('');
+  }
 
   lines.push(section('By model'));
   for (const [model, t] of ranked(report.byModel)) {
@@ -77,7 +109,7 @@ export function formatUsageReport(report: UsageReport, top = 10): string {
   }
   lines.push('');
 
-  lines.push(section('By skill / slash command (main thread; subagents grouped)'));
+  lines.push(section('By skill / slash command (main thread) and agent type (subagents)'));
   for (const [skill, t] of ranked(report.bySkill).slice(0, top)) {
     lines.push(`  ${pct(inputEquivalent(t), all).padStart(4)}  ${skill}  ${pc.dim(`calls ${t.calls}, ≈${fmt(inputEquivalent(t))} input-eq`)}`);
   }
@@ -110,6 +142,8 @@ export function formatUsageReport(report: UsageReport, top = 10): string {
   if (peak >= 200_000) signals.push(`a session reached ${fmt(peak)} tokens of context — every turn re-reads it; split work or /clear between tasks.`);
   if (sum(idle) > 0) signals.push(`${fmt(sum(idle))} tokens re-written after idle gaps — resume big sessions fresh instead of returning to them cold.`);
   if (inputEquivalent(report.subagents) > inputEquivalent(report.main)) signals.push('subagents outweigh the main thread — check their model and how much context each one loads.');
+  const longLived = report.agents.filter((a) => a.peakContext >= 200_000);
+  if (longLived.length > 0) signals.push(`${longLived.length} subagent(s) grew past 200k context — long-lived agents (SendMessage loops) re-read their whole history every turn; prefer a fresh agent per round with only the artifact to review.`);
   if (signals.length > 0) {
     lines.push('');
     lines.push(section('Signals'));
