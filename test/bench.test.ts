@@ -60,6 +60,8 @@ describe('bench', () => {
     expect(result.usage.totals.calls).toBe(3);
     expect(result.usage.subagents.calls).toBe(1);
     expect(result.usage.peakContext).toBe(41_010);
+    // Both fake requests share one timestamp: active span is 0 even though prepare happened earlier.
+    expect(result.wallMinutes).toBe(0);
     expect(await fs.pathExists(path.join(path.dirname(run.workspace), 'result.json'))).toBe(true);
   });
 

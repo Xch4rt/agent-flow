@@ -132,10 +132,16 @@ export async function finishBenchRun(runDir: string, options: { claudeDir?: stri
   const peakContext = report.sessions.reduce((m, s) => Math.max(m, s.peakContext), 0);
   const idleRewriteTokens = report.cacheBreaks.filter((b) => b.reason === 'idle').reduce((sum, b) => sum + b.cacheWrite, 0);
 
+  // Wall time = the agent's active span (first → last request), not prepare → finish,
+  // so preparing several runs up front does not inflate anyone's time.
+  const starts = report.sessions.map((s) => Date.parse(s.start ?? '')).filter((t) => !Number.isNaN(t));
+  const ends = report.sessions.map((s) => Date.parse(s.end ?? '')).filter((t) => !Number.isNaN(t));
+  const activeMs = starts.length && ends.length ? Math.max(...ends) - Math.min(...starts) : finishedAt.getTime() - Date.parse(run.startedAt);
+
   const result: BenchResult = {
     ...run,
     finishedAt: finishedAt.toISOString(),
-    wallMinutes: Math.round(((finishedAt.getTime() - Date.parse(run.startedAt)) / 60_000) * 10) / 10,
+    wallMinutes: Math.round((activeMs / 60_000) * 10) / 10,
     passed: check.exitCode === 0,
     check: { exitCode: check.exitCode, summary: check.compact.summary, failures: check.compact.failures.length, logPath: path.join(run.workspace, check.logPath) },
     usage: {
