@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Observed usage
+
+- New `agent-flow usage`: parses Claude Code transcripts for the current project (or `--all`) and reports observed input / cache write / cache read / output per session, main thread vs subagents, per model and per skill, peak context, and large cache writes classified as idle-gap rewrites, prefix changes or first requests. Establishes a real baseline instead of chars/4 estimates.
+
+### Budget coherence
+
+- `next --json` / `next --wave --json`: the envelope `contextPack` now applies `--budget-lines` (it previously emitted the untrimmed pack) and reports `budget.omitted` per section; envelopes are emitted as compact JSON.
+- `context --json` emits the same budgeted selection as the text view, and `--stats` measures the exact JSON payload emitted (it previously measured the text rendering).
+- Token stats are signed: a pack larger than the baseline is reported as an expansion instead of being clamped to zero saved tokens; stats carry `method: "estimate:chars/4"` and the text view labels them as estimates.
+
 ## v0.8.0
 
 Adoption: the full daily loop as Claude Code skills, reproducible demo videos, and a cleaner face.

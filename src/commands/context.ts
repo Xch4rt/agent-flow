@@ -1,4 +1,4 @@
-import { buildContextPack, formatContextPack } from '../core/context-pack.js';
+import { budgetContextPack, buildContextPack, formatContextPack } from '../core/context-pack.js';
 import { buildTokenStats, formatTokenStats } from '../core/token-stats.js';
 
 function parsePositiveInteger(value: string | number | undefined, optionName: string): number | undefined {
@@ -25,31 +25,30 @@ export async function runContext(
   } = {},
 ): Promise<void> {
   const cwd = options.cwd ?? process.cwd();
+  const budgetLines = parsePositiveInteger(options.budgetLines, '--budget-lines') ?? 100;
   const pack = await buildContextPack(task, {
     cwd,
     module: options.module,
     limit: parsePositiveInteger(options.limit, '--limit') ?? 5,
-    budgetLines: parsePositiveInteger(options.budgetLines, '--budget-lines') ?? 100,
+    budgetLines,
     includeEvents: options.includeEvents,
     includeOpenQuestions: options.includeOpenQuestions,
   });
 
   if (options.json) {
-    const output: Record<string, unknown> = { ...pack };
-    if (options.stats) {
-      const formatted = formatContextPack(pack, {
-        budgetLines: parsePositiveInteger(options.budgetLines, '--budget-lines') ?? 100,
-      });
-      const stats = await buildTokenStats(cwd, formatted);
-      if (stats) output.stats = stats;
+    // Emit the same budgeted selection as the text view, and measure exactly what is emitted.
+    const budgeted = budgetContextPack(pack, budgetLines);
+    const payload = JSON.stringify(budgeted, null, 2);
+    if (!options.stats) {
+      console.log(payload);
+      return;
     }
-    console.log(JSON.stringify(output, null, 2));
+    const stats = await buildTokenStats(cwd, payload);
+    console.log(JSON.stringify(stats ? { ...budgeted, stats } : budgeted, null, 2));
     return;
   }
 
-  const formatted = formatContextPack(pack, {
-    budgetLines: parsePositiveInteger(options.budgetLines, '--budget-lines') ?? 100,
-  });
+  const formatted = formatContextPack(pack, { budgetLines });
   console.log(formatted.trimEnd());
 
   if (options.stats) {

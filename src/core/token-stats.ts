@@ -15,9 +15,13 @@ const baselineFiles = [
 ];
 
 export type TokenStats = {
+  /** How the numbers were produced. Estimates are not observed usage — see `agent-flow usage`. */
+  method: 'estimate:chars/4';
   baselineTokens: number;
   packTokens: number;
+  /** Signed: negative when the pack is larger than the baseline (a regression). */
   savedTokens: number;
+  /** Signed percentage; negative means expansion. */
   reductionPercent: number;
 };
 
@@ -43,19 +47,23 @@ export async function buildTokenStats(root: string, packText: string): Promise<T
 
   const baselineTokens = estimateTokens(baselineText);
   const packTokens = estimateTokens(packText);
-  const savedTokens = Math.max(0, baselineTokens - packTokens);
+  const savedTokens = baselineTokens - packTokens;
   const reductionPercent = baselineTokens > 0 ? Math.round((savedTokens / baselineTokens) * 100) : 0;
 
-  return { baselineTokens, packTokens, savedTokens, reductionPercent };
+  return { method: 'estimate:chars/4', baselineTokens, packTokens, savedTokens, reductionPercent };
 }
 
-export function formatTokenStats(stats: TokenStats): string {
+export function formatTokenStats(stats: Omit<TokenStats, 'method'> & { method?: TokenStats['method'] }): string {
+  const expanded = stats.savedTokens < 0;
   return [
     '',
     'Context Stats:',
+    '- Method: estimate (chars/4) vs. reading every planning + memory file; not observed usage (see `agent-flow usage`)',
     `- Estimated baseline tokens: ${stats.baselineTokens}`,
     `- Estimated context pack tokens: ${stats.packTokens}`,
-    `- Estimated saved tokens: ${stats.savedTokens}`,
+    expanded
+      ? `- Estimated EXPANSION: ${-stats.savedTokens} tokens (pack is larger than the baseline)`
+      : `- Estimated saved tokens: ${stats.savedTokens}`,
     `- Estimated reduction: ${stats.reductionPercent}%`,
   ].join('\n');
 }

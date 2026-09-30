@@ -1,5 +1,5 @@
 import pc from 'picocolors';
-import { buildContextPack, formatContextPack } from '../core/context-pack.js';
+import { budgetContextPack, buildContextPack, formatContextPack } from '../core/context-pack.js';
 import { appendMemoryEntry } from '../core/jsonl-memory.js';
 import {
   conflictFreeBatch,
@@ -63,6 +63,7 @@ type TaskEnvelope = {
   commands: Record<string, string>;
   pack: Awaited<ReturnType<typeof buildContextPack>>;
   formattedPack: string;
+  budgetLines: number;
 };
 
 async function buildTaskEnvelope(root: string, phase: Phase, task: Task, budgetLines: number): Promise<TaskEnvelope> {
@@ -70,7 +71,7 @@ async function buildTaskEnvelope(root: string, phase: Phase, task: Task, budgetL
   const gateNames = gateNamesFor(task, await getDefaultGates(root));
   const pack = await buildContextPack(`${phase.title}: ${task.title}`, { cwd: root, limit: 5, budgetLines });
   const formattedPack = formatContextPack(pack, { budgetLines });
-  return { phase, task, gateNames, commands, pack, formattedPack };
+  return { phase, task, gateNames, commands, pack, formattedPack, budgetLines };
 }
 
 function envelopeJson(env: TaskEnvelope): Record<string, unknown> {
@@ -79,7 +80,7 @@ function envelopeJson(env: TaskEnvelope): Record<string, unknown> {
     task: { id: env.task.id, title: env.task.title, scope: env.task.scope, wave: env.task.wave },
     acceptance: env.task.acceptance,
     gates: env.gateNames.map((name) => ({ name, command: env.commands[name] ?? null })),
-    contextPack: env.pack,
+    contextPack: budgetContextPack(env.pack, env.budgetLines),
   };
 }
 
@@ -126,7 +127,7 @@ export async function runNext(options: NextOptions = {}): Promise<void> {
   const env = await buildTaskEnvelope(root, phase, task, budgetLines);
 
   if (options.json) {
-    console.log(JSON.stringify(envelopeJson(env), null, 2));
+    console.log(JSON.stringify(envelopeJson(env)));
     return;
   }
 
@@ -168,7 +169,7 @@ async function runNextWave(root: string, plan: Plan, budgetLines: number, json: 
       wave: wave.wave,
       batch: envelopes.map(envelopeJson),
       heldBack: heldBack.map(({ phase, task, file }) => ({ phase: phase.id, task: task.id, conflictFile: file })),
-    }, null, 2));
+    }));
     return;
   }
 

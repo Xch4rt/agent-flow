@@ -24,6 +24,7 @@ import { runPlanHarden, runPlanInit, runPlanRender, runPlanShow, runPlanValidate
 import { runReviewEmit, runReviewRecord } from './commands/review.js';
 import { runStart } from './commands/start.js';
 import { runStatus } from './commands/status.js';
+import { runUsage } from './commands/usage.js';
 import { brandTitle } from './core/terminal-ui.js';
 import { resolveRoot } from './core/project-root.js';
 import { runDashboard } from './dashboard/dashboard.js';
@@ -268,6 +269,20 @@ export function createProgram(): Command {
     .option('--json', 'Print structured JSON')
     .action(async (options: { phase: string; verdict?: string; fromJson?: string; notes?: string; json?: boolean }) => {
       await runReviewRecord(options);
+    });
+
+  program
+    .command('usage')
+    .description('Report observed Claude Code token usage for this project: cache breaks, peak context, subagents, skills.')
+    .option('--all', 'Scan every Claude Code project, not just this one')
+    .option('--since <when>', 'Only usage since 7d, 12h, 90m or an ISO date')
+    .option('--session <id>', 'Only the session whose id starts with <id>')
+    .option('--dir <path>', 'Claude config dir (default: $CLAUDE_CONFIG_DIR or ~/.claude)')
+    .option('--top <n>', 'Rows per section (default 10)')
+    .option('--idle-minutes <n>', 'Gap after which a large cache write counts as a cold-cache rewrite (default 5)')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { all?: boolean; since?: string; session?: string; dir?: string; top?: string; idleMinutes?: string; json?: boolean }) => {
+      await runUsage(options);
     });
 
   const memory = program.command('memory').description('Inspect local JSONL memory.');

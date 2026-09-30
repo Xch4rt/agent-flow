@@ -77,6 +77,8 @@ agent-flow close                           # record durable memory at session en
 
 Planning lives in `.planning/`, append-only memory in `.memory/*.jsonl` (reviewable source of truth), with a generated SQLite index for fast queries. Deterministic local scoring — no embeddings.
 
+Where did the tokens actually go? `agent-flow usage` reads Claude Code's own transcripts and shows cache breaks, peak context, subagents and per-skill cost for this project.
+
 → Full details: **[docs/memory.md](docs/memory.md)** · All flags: **[docs/commands.md](docs/commands.md)**
 
 ## Status
