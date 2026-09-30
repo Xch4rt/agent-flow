@@ -45,10 +45,12 @@ describe('Claude adapter', () => {
     expect(relative).toContain('.claude/skills/flow-close/SKILL.md');
     expect(relative).toContain('.claude/skills/flow-harden/SKILL.md');
     expect(relative).toContain('.claude/skills/flow-orchestrate/SKILL.md');
+    expect(relative).toContain('.claude/agents/flow-executor-light.md');
     expect(relative).toContain('.claude/agents/flow-executor.md');
+    expect(relative).toContain('.claude/agents/flow-executor-deep.md');
     expect(relative).toContain('.claude/agents/flow-reviewer.md');
     expect(relative).toContain('.claude/agents/flow-hardener.md');
-    expect(relative).toHaveLength(12);
+    expect(relative).toHaveLength(14);
   });
 });
 
@@ -124,11 +126,18 @@ describe('init --claude', () => {
     const config = await fs.readJson(path.join(tmpDir, '.agent-flow/config.json'));
     expect(config.adapters.claude).toBe(true);
     expect(config.adapters.codex).toBe(false);
-    expect(config.orchestration.models).toEqual({ executor: 'sonnet', reviewer: 'sonnet', hardener: 'sonnet', escalation: 'opus' });
+    expect(config.orchestration.models).toEqual({ reviewer: 'sonnet', hardener: 'sonnet', escalation: 'opus' });
+    expect(config.orchestration.router).toEqual({ enabled: true, thresholds: { standard: 2, deep: 5 } });
+    expect(config.orchestration.tiers.light).toEqual({ model: 'haiku', effort: 'low' });
     expect(config.orchestration.escalateAfterFailures).toBe(2);
 
     const executor = await fs.readFile(path.join(tmpDir, '.claude/agents/flow-executor.md'), 'utf8');
-    expect(executor).toMatch(/^---\nname: flow-executor\ndescription: .+\nmodel: sonnet\n---/);
+    expect(executor).toMatch(/^---\nname: flow-executor\ndescription: .+\nmodel: sonnet\neffort: medium\n---/);
+    const light = await fs.readFile(path.join(tmpDir, '.claude/agents/flow-executor-light.md'), 'utf8');
+    expect(light).toMatch(/^---\nname: flow-executor-light\ndescription: .+\nmodel: haiku\neffort: low\n---/);
+    const deep = await fs.readFile(path.join(tmpDir, '.claude/agents/flow-executor-deep.md'), 'utf8');
+    expect(deep).toMatch(/\nmodel: sonnet\neffort: high\n/);
+    expect(await fs.readFile(path.join(tmpDir, '.claude/agents/flow-reviewer.md'), 'utf8')).toContain('effort: high');
     await expect(fs.pathExists(path.join(tmpDir, '.claude/agents/flow-reviewer.md'))).resolves.toBe(true);
     await expect(fs.pathExists(path.join(tmpDir, '.claude/agents/flow-hardener.md'))).resolves.toBe(true);
   });
@@ -138,7 +147,7 @@ describe('init --claude', () => {
     await fs.writeJson(path.join(tmpDir, '.agent-flow/config.json'), {
       schemaVersion: 1,
       adapters: { claude: true },
-      orchestration: { models: { executor: 'haiku', reviewer: 'opus' }, contextBudgetTokens: 80000 },
+      orchestration: { models: { executor: 'haiku', reviewer: 'opus' }, tiers: { deep: { model: 'opus', effort: 'xhigh' } }, contextBudgetTokens: 80000 },
     });
     await runInit({ claude: true, cwd: tmpDir });
     const executor = await fs.readFile(path.join(tmpDir, '.claude/agents/flow-executor.md'), 'utf8');
@@ -148,6 +157,9 @@ describe('init --claude', () => {
     expect(executor).toContain('~80k tokens');
     expect(reviewer).toContain('model: opus');
     expect(hardener).toContain('model: sonnet');
+    const deep = await fs.readFile(path.join(tmpDir, '.claude/agents/flow-executor-deep.md'), 'utf8');
+    expect(deep).toContain('model: opus');
+    expect(deep).toContain('effort: xhigh');
   });
 });
 
@@ -156,7 +168,9 @@ describe('token-aware orchestration skill', () => {
     const skill = flowOrchestrateSkill();
     expect(skill).toContain('agent-flow next --brief');
     expect(skill).toContain('agent-flow next --task <id> --json');
-    expect(skill).toContain('flow-executor');
+    expect(skill).toContain('flow-executor-light');
+    expect(skill).toContain('flow-executor-deep');
+    expect(skill).toContain('subagent_type = \`executor.agent\`');
     expect(skill).toContain('flow-reviewer');
     expect(skill).toContain('Never revive a finished or waiting agent with SendMessage');
     expect(skill).toContain('review emit --phase <N> --reviewer > .agent-flow/review-<N>.prompt.md');

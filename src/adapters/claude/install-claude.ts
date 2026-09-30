@@ -29,7 +29,7 @@ const skillNames = [
   'flow-close',
 ];
 
-const agentNames = ['flow-executor', 'flow-reviewer', 'flow-hardener'];
+const agentNames = ['flow-executor-light', 'flow-executor', 'flow-executor-deep', 'flow-reviewer', 'flow-hardener'];
 
 export function claudeFiles(
   root: string,
@@ -52,7 +52,9 @@ export function claudeFiles(
       content,
     })),
     // Subagents with explicit models: orchestration roles run on the routed model, not the session's.
-    { path: path.join(root, '.claude', 'agents', 'flow-executor.md'), content: flowExecutorAgent(routing) },
+    { path: path.join(root, '.claude', 'agents', 'flow-executor-light.md'), content: flowExecutorAgent(routing, 'light') },
+    { path: path.join(root, '.claude', 'agents', 'flow-executor.md'), content: flowExecutorAgent(routing, 'standard') },
+    { path: path.join(root, '.claude', 'agents', 'flow-executor-deep.md'), content: flowExecutorAgent(routing, 'deep') },
     { path: path.join(root, '.claude', 'agents', 'flow-reviewer.md'), content: flowReviewerAgent(routing) },
     { path: path.join(root, '.claude', 'agents', 'flow-hardener.md'), content: flowHardenerAgent(routing) },
   ];

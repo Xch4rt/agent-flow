@@ -27,6 +27,8 @@ Agent Flow emits the envelopes and runs the gates; your agent does the work; `ad
 - **Agents say "done" too easily.** A committed plan with acceptance criteria, deterministic gates (tests, typecheck, a real boot-and-probe smoke gate), and independent phase reviews make "done" mean something.
 - **Plans miss what experts know.** Pitfall packs flag missing table-stakes criteria for free; one hardening agent fills the rest. Benchmark: matched a research-heavy multi-agent pipeline's quality at **24% of its tokens**.
 
+- **Agents burn tokens on the wrong things.** `/flow-orchestrate` keeps the main thread thin, runs each task in a fresh executor, and a zero-token router sends small tasks to a light model and risky ones (auth, persistence, migrations) to a deep one — escalating only when gates keep failing. `agent-flow usage` shows where your tokens actually went.
+
 Everything is local files in your repo. No server, no embeddings, no external services.
 
 ## The daily loop

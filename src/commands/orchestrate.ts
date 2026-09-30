@@ -90,7 +90,7 @@ async function buildTaskEnvelope(root: string, phase: Phase, task: Task, budgetL
   const gateNames = gateNamesFor(task, await getDefaultGates(root));
   const pack = await buildContextPack(`${phase.title}: ${task.title}`, { cwd: root, limit: 5, budgetLines });
   const formattedPack = formatContextPack(pack, { budgetLines });
-  const executor = executorAssignment(await getModelRouting(root), (await readTaskStats(root))[task.id]);
+  const executor = executorAssignment(await getModelRouting(root), (await readTaskStats(root))[task.id], task);
   return { phase, task, gateNames, commands, pack, formattedPack, budgetLines, executor };
 }
 
@@ -111,7 +111,13 @@ function briefJson(env: TaskEnvelope): Record<string, unknown> {
     title: env.task.title,
     phase: env.phase.id,
     wave: env.task.wave,
-    executor: { agent: env.executor.agent, model: env.executor.model, escalated: env.executor.escalated },
+    executor: {
+      agent: env.executor.agent,
+      model: env.executor.model,
+      effort: env.executor.effort,
+      tier: env.executor.rung,
+      escalated: env.executor.escalated,
+    },
     envelope: `agent-flow next --task ${env.task.id} --json`,
   };
 }
@@ -120,7 +126,8 @@ function printEnvelope(env: TaskEnvelope): void {
   console.log(keyValue('Task:', `${env.task.id} — ${env.task.title}`));
   console.log(keyValue('Phase:', `${env.phase.id} ${env.phase.title}`));
   if (env.task.scope.length > 0) console.log(keyValue('Scope:', env.task.scope.join(', ')));
-  console.log(keyValue('Executor:', `${env.executor.agent} on ${env.executor.model}${env.executor.escalated ? ' (escalated)' : ''} — ${env.executor.reason}`));
+  console.log(keyValue('Executor:', `${env.executor.agent} on ${env.executor.model}/${env.executor.effort}${env.executor.escalated ? ' (escalated)' : ''} — ${env.executor.reason}`));
+  if (env.executor.reasons.length > 0) console.log(keyValue('Routing:', env.executor.reasons.join(' · ')));
   if (env.task.acceptance.length > 0) {
     console.log(section('Acceptance:'));
     for (const a of env.task.acceptance) console.log(`  - ${a.id} [${a.proof ?? 'manual'}] ${a.text}`);
@@ -283,7 +290,7 @@ export async function runGateCommand(options: GateCmdOptions = {}): Promise<void
     at: new Date().toISOString(),
   });
   const stats = options.record === false ? (await readTaskStats(root))[task.id] : await recordGateOutcome(root, task.id, run.ok);
-  const nextExecutor = executorAssignment(await getModelRouting(root), stats);
+  const nextExecutor = executorAssignment(await getModelRouting(root), stats, task);
 
   if (options.json) {
     console.log(JSON.stringify({ task: task.id, ok: run.ok, results: run.results, ...(run.ok ? {} : { nextExecutor }) }, null, 2));
@@ -293,7 +300,7 @@ export async function runGateCommand(options: GateCmdOptions = {}): Promise<void
     printGateResults(run.results);
     console.log(run.ok ? `${statusLabel('ok')} all gates green` : `${statusLabel('fail')} gate failed — fix and re-run`);
     if (run.ok) console.log(`Next: ${pc.cyan(`agent-flow advance --task ${task.id}`)}`);
-    else console.log(keyValue('Next executor:', `${nextExecutor.model}${nextExecutor.escalated ? ' (escalated)' : ''} — ${nextExecutor.reason}`));
+    else console.log(keyValue('Next executor:', `${nextExecutor.agent} on ${nextExecutor.model}${nextExecutor.escalated ? ' (escalated)' : ''} — ${nextExecutor.reason}`));
   }
 
   if (!run.ok) process.exitCode = 1;

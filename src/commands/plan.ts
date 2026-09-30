@@ -1,5 +1,6 @@
 import fs from 'fs-extra';
 import pc from 'picocolors';
+import { executorAssignment, getModelRouting, readTaskStats } from '../core/models.js';
 import { brandTitle, keyValue, section, statusLabel } from '../core/terminal-ui.js';
 import path from 'node:path';
 import {
@@ -243,12 +244,16 @@ export async function runPlanShow(options: PlanShowOptions = {}): Promise<void> 
   console.log(
     keyValue('Progress:', `${progress.tasksDone}/${progress.tasksTotal} tasks (${progress.percent}%), ${progress.phasesDone}/${progress.phasesTotal} phases`),
   );
+  const routing = await getModelRouting(root);
+  const taskStats = await readTaskStats(root);
   console.log(section('Phases:'));
   for (const phase of plan.phases) {
     const pp = phaseProgress(phase);
     console.log(`  [${phase.status}] ${phase.id} ${phase.title} — ${pp.done}/${pp.total} tasks`);
     for (const task of phase.tasks) {
-      console.log(`     - [${task.status}] ${task.id} (wave ${task.wave}) ${task.title}`);
+      const exec = executorAssignment(routing, taskStats[task.id], task);
+      const route = task.status === 'done' ? '' : pc.dim(` → ${exec.rung} (${exec.model}/${exec.effort})`);
+      console.log(`     - [${task.status}] ${task.id} (wave ${task.wave}) ${task.title}${route}`);
     }
   }
   console.log(section('Up next:'));

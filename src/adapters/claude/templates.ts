@@ -1,5 +1,6 @@
 import type { ProjectDetection } from '../../core/detect-project.js';
-import { DEFAULT_MODEL_ROUTING, type ModelRouting } from '../../core/models.js';
+import { DEFAULT_MODEL_ROUTING, TIER_AGENTS, type ModelRouting } from '../../core/models.js';
+import type { Tier } from '../../core/router.js';
 
 function header(name: string, description: string): string {
   return `---
@@ -355,9 +356,9 @@ Every turn of this conversation re-reads everything already in it, so keep it sm
    agent-flow next --brief
    \`\`\`
 
-   One line: task id, title, and \`executor.model\` (the default model, or the escalation model after repeated red gates). Do not fetch the full envelope here — the executor does. (\`agent-flow next --json\` prints the full envelope when you genuinely need it.)
+   One line: task id, title, and \`executor\` — the \`agent\` and \`model\` a deterministic router picked from the task's signals (scope size, criteria, domain packs, risky wording): \`flow-executor-light\`, \`flow-executor\` or \`flow-executor-deep\`, climbing a rung after repeated red attempts. Do not fetch the full envelope here — the executor does. (\`agent-flow next --json\` prints the full envelope when you genuinely need it.)
 
-2. **Spawn ONE \`flow-executor\`** (subagent_type \`flow-executor\`, model = \`executor.model\`) with a prompt like:
+2. **Spawn ONE executor** (subagent_type = \`executor.agent\`, model = \`executor.model\`) with a prompt like:
 
    \`\`\`text
    Task <id>. Get your envelope with: agent-flow next --task <id> --json
@@ -366,7 +367,7 @@ Every turn of this conversation re-reads everything already in it, so keep it sm
 
    Nothing else — no repo summaries, no pasted code.
 
-   Parallel work: \`agent-flow next --wave --brief\` lists the scope-disjoint batch; spawn one \`flow-executor\` per entry in a single message. Never let two agents share a scope file.
+   Parallel work: \`agent-flow next --wave --brief\` lists the scope-disjoint batch; spawn one executor per entry (each with its own \`executor.agent\` and \`executor.model\`) in a single message. Never let two agents share a scope file.
 
 3. **Read its status block** (≤5 lines). \`handoff\` → spawn a fresh executor pointing at the handoff file. \`blocked\` → stop and report.
 
@@ -376,7 +377,7 @@ Every turn of this conversation re-reads everything already in it, so keep it sm
    agent-flow gate --task <id>
    \`\`\`
 
-   This run is the authoritative one for escalation. Red → spawn a fresh \`flow-executor\` with the failing tail. The gate output names the next executor model; after \`escalateAfterFailures\` consecutive red attempts it escalates automatically. Do not weaken tests or acceptance criteria to make a gate pass.
+   This run is the authoritative one for escalation. Red → spawn a fresh executor with the failing tail, using the \`Next executor\` the gate output names (after \`escalateAfterFailures\` consecutive red attempts it climbs one rung: light → standard → deep → escalation model). Do not weaken tests or acceptance criteria to make a gate pass.
 
 5. **Advance, then commit** (in this order — the gate result is keyed to the working tree, and committing first makes it stale):
 
@@ -421,13 +422,23 @@ For orchestration, usually recommend:
 `;
 }
 
-export function flowExecutorAgent(routing: ModelRouting = DEFAULT_MODEL_ROUTING): string {
+const TIER_BLURB: Record<Tier, string> = {
+  light: 'Light tier: small, low-risk tasks. Be direct; skip broad exploration.',
+  standard: 'Standard tier: typical tasks.',
+  deep: 'Deep tier: risky or wide tasks (auth, persistence, migrations, concurrency, many files) and escalated retries. Reason carefully about edge cases before editing.',
+};
+
+export function flowExecutorAgent(routing: ModelRouting = DEFAULT_MODEL_ROUTING, tier: Tier = 'standard'): string {
   const budget = Math.round(routing.contextBudgetTokens / 1000);
+  const spec = routing.tiers[tier];
   return `---
-name: flow-executor
-description: Implements exactly one agent-flow task from its envelope, inside its scope, until its gates are green. Spawned by /flow-orchestrate; returns a short status block, not code.
-model: ${routing.executor}
+name: ${TIER_AGENTS[tier]}
+description: Implements exactly one agent-flow task from its envelope, inside its scope, until its gates are green (${tier} tier). Spawned by /flow-orchestrate; returns a short status block, not code.
+model: ${spec.model}
+effort: ${spec.effort}
 ---
+
+${TIER_BLURB[tier]}
 
 You implement ONE agent-flow task. Your first step: run the envelope command you were given (\`agent-flow next --task <id> --json\`). The envelope is your whole briefing: task, scope files, acceptance criteria (including \`H<n>\` hardening criteria), gates, and a budgeted context pack.
 
@@ -459,6 +470,7 @@ export function flowReviewerAgent(routing: ModelRouting = DEFAULT_MODEL_ROUTING)
 name: flow-reviewer
 description: Independent phase reviewer for agent-flow tier-1 reviews. Reads the emitted review prompt and the actual code, writes a JSON verdict file, returns one line.
 model: ${routing.reviewer}
+effort: high
 ---
 
 You are an independent reviewer. You were given the path of a review prompt emitted by \`agent-flow review emit --reviewer\` and the path to write your verdict to.
@@ -477,6 +489,7 @@ export function flowHardenerAgent(routing: ModelRouting = DEFAULT_MODEL_ROUTING)
 name: flow-hardener
 description: One-pass domain-hardening reviewer for agent-flow plans. Reads the emitted hardening prompt, writes proposed acceptance criteria as JSON to a file, returns one line.
 model: ${routing.hardener}
+effort: medium
 ---
 
 You were given the path of a hardening prompt emitted by \`agent-flow plan harden\` and the path to write your answer to.

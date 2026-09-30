@@ -36,19 +36,37 @@ Quality is decided by gates and independent review; routing decides what it cost
 - Reviewer and hardener prompts and answers travel through files (`review emit ... > .agent-flow/review-<N>.prompt.md`), not through the orchestrator's conversation.
 - The loop stops at phase boundaries and recommends `/clear`; state lives in `plan.json`.
 
-`init --claude` installs the role subagents in `.claude/agents/` (`flow-executor`, `flow-reviewer`, `flow-hardener`) with explicit models from `.agent-flow/config.json`:
+**Deterministic router (zero tokens).** Before a task runs, agent-flow scores it from signals the plan already carries — scope size, number of acceptance criteria, hardening (`H<n>`) criteria, matching pitfall packs (auth/secrets and persistence weigh most), a smoke gate, dependencies, and risky wording (migration, schema, concurrency, auth, payment, crypto, …). The score picks a tier; each tier is an executor subagent with its own model and effort:
+
+| Tier | Agent | Default model / effort | Typical task |
+| --- | --- | --- | --- |
+| light | `flow-executor-light` | haiku / low | one file, plain change |
+| standard | `flow-executor` | sonnet / medium | typical feature work |
+| deep | `flow-executor-deep` | sonnet / high | auth, persistence, many files, risky wording |
+
+`agent-flow plan show` previews every pending task's route; `next --brief` returns the agent and model to spawn; `next --json` includes the scoring reasons. Pin a tier on a task with `"tier": "deep"` in `plan.json`, or turn routing off with `orchestration.router.enabled: false` (every task then uses the standard tier). The idea is the same as per-request effort routers such as Jev, but decided per task from the plan — no proxy, no extra model call, and the prompt cache is never touched.
+
+**Escalation by evidence.** Every orchestrator `gate` run is recorded per task in `.agent-flow/task-stats.json` (executors iterate with `gate --no-record`, so their own fix-and-retry cycles do not count). Every `escalateAfterFailures` consecutive red attempts (default 2) the task climbs one rung: light → standard → deep → the `escalation` model (opus) on the deep agent. A green run resets it; `0` disables escalation.
+
+`init --claude` installs the subagents in `.claude/agents/` (`flow-executor-light`, `flow-executor`, `flow-executor-deep`, `flow-reviewer`, `flow-hardener`) from `.agent-flow/config.json`:
 
 ```json
 {
   "orchestration": {
-    "models": { "executor": "sonnet", "reviewer": "sonnet", "hardener": "sonnet", "escalation": "opus" },
+    "router": { "enabled": true, "thresholds": { "standard": 2, "deep": 5 } },
+    "tiers": {
+      "light": { "model": "haiku", "effort": "low" },
+      "standard": { "model": "sonnet", "effort": "medium" },
+      "deep": { "model": "sonnet", "effort": "high" }
+    },
+    "models": { "reviewer": "sonnet", "hardener": "sonnet", "escalation": "opus" },
     "escalateAfterFailures": 2,
     "contextBudgetTokens": 150000
   }
 }
 ```
 
-**Escalation by evidence:** every orchestrator `gate` run is recorded per task (executors iterate with `gate --no-record`, so their own fix-and-retry cycles do not count) in `.agent-flow/task-stats.json`. After `escalateAfterFailures` consecutive red runs, that task's next executor is assigned the `escalation` model (shown by `next --brief`, `next --json` and a failing `gate`); a green run resets it. `0` disables escalation. `contextBudgetTokens` is the advisory budget past which an executor writes `.agent-flow/handoffs/<id>.md` and hands off instead of growing its context.
+`contextBudgetTokens` is the advisory budget past which an executor writes `.agent-flow/handoffs/<id>.md` and hands off instead of growing its context.
 
 Re-run `agent-flow init --claude --force` after changing models so the agent files pick them up. Measure the effect with `agent-flow usage --since 1d`.
 

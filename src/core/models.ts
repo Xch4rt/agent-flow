@@ -1,6 +1,8 @@
 import path from 'node:path';
 import fs from 'fs-extra';
 import { readConfig } from './config.js';
+import type { Task } from './plan-schema.js';
+import { DEFAULT_TIER_THRESHOLDS, scoreTask, TIERS, type Tier, type TierThresholds } from './router.js';
 
 /**
  * Token-aware model routing for orchestration roles.
@@ -12,19 +14,39 @@ import { readConfig } from './config.js';
 
 export type ModelRole = 'executor' | 'reviewer' | 'hardener';
 
+export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type TierSpec = { model: string; effort: Effort };
+
+/** Executor subagent installed for each tier (effort is fixed per agent definition). */
+export const TIER_AGENTS: Record<Tier, string> = {
+  light: 'flow-executor-light',
+  standard: 'flow-executor',
+  deep: 'flow-executor-deep',
+};
+
 export type ModelRouting = {
+  /** Executor model and effort per routed tier. */
+  tiers: Record<Tier, TierSpec>;
+  /** Deterministic routing by task signals; when disabled every task uses the standard tier. */
+  router: { enabled: boolean; thresholds: TierThresholds };
   executor: string;
   reviewer: string;
   hardener: string;
   /** Model a task's executor escalates to after repeated gate failures. */
   escalation: string;
-  /** Consecutive red gate runs on one task before its executor escalates. 0 disables escalation. */
+  /** Consecutive red attempts on one task before its executor climbs one rung (light → standard → deep → escalation). 0 disables escalation. */
   escalateAfterFailures: number;
   /** Advisory per-agent context budget; agents hand off instead of growing past it. */
   contextBudgetTokens: number;
 };
 
 export const DEFAULT_MODEL_ROUTING: ModelRouting = {
+  tiers: {
+    light: { model: 'haiku', effort: 'low' },
+    standard: { model: 'sonnet', effort: 'medium' },
+    deep: { model: 'sonnet', effort: 'high' },
+  },
+  router: { enabled: true, thresholds: DEFAULT_TIER_THRESHOLDS },
   executor: 'sonnet',
   reviewer: 'sonnet',
   hardener: 'sonnet',
@@ -41,12 +63,37 @@ function nonNegativeInt(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : fallback;
 }
 
+const EFFORTS = new Set<Effort>(['low', 'medium', 'high', 'xhigh', 'max']);
+
+function tierSpec(value: unknown, fallback: TierSpec): TierSpec {
+  const v = (value ?? {}) as Record<string, unknown>;
+  const effort = typeof v.effort === 'string' && EFFORTS.has(v.effort as Effort) ? (v.effort as Effort) : fallback.effort;
+  return { model: nonEmptyString(v.model, fallback.model), effort };
+}
+
 export async function getModelRouting(root: string): Promise<ModelRouting> {
   const config = await readConfig(root);
   const orchestration = (config?.orchestration ?? {}) as Record<string, unknown>;
   const models = (orchestration.models ?? {}) as Record<string, unknown>;
+  const tiers = (orchestration.tiers ?? {}) as Record<string, unknown>;
+  const router = (orchestration.router ?? {}) as Record<string, unknown>;
+  const thresholds = (router.thresholds ?? {}) as Record<string, unknown>;
   const d = DEFAULT_MODEL_ROUTING;
+  // Back-compat: models.executor sets the standard tier when no tiers are configured.
+  const standardFallback = { ...d.tiers.standard, model: nonEmptyString(models.executor, d.tiers.standard.model) };
   return {
+    tiers: {
+      light: tierSpec(tiers.light, d.tiers.light),
+      standard: tierSpec(tiers.standard, standardFallback),
+      deep: tierSpec(tiers.deep, d.tiers.deep),
+    },
+    router: {
+      enabled: router.enabled !== false,
+      thresholds: {
+        standard: nonNegativeInt(thresholds.standard, d.router.thresholds.standard),
+        deep: nonNegativeInt(thresholds.deep, d.router.thresholds.deep),
+      },
+    },
     executor: nonEmptyString(models.executor, d.executor),
     reviewer: nonEmptyString(models.reviewer, d.reviewer),
     hardener: nonEmptyString(models.hardener, d.hardener),
@@ -101,25 +148,63 @@ export async function recordGateOutcome(root: string, taskId: string, ok: boolea
 }
 
 export type ExecutorAssignment = {
-  agent: 'flow-executor';
+  /** Subagent to spawn (its definition fixes the effort). */
+  agent: string;
+  /** Model to pass on the Agent call (overrides the definition's model). */
   model: string;
+  effort: Effort;
+  /** Tier the router chose from the task's signals. */
+  tier: Tier;
+  /** Rung actually assigned after escalation. */
+  rung: Tier | 'escalation';
   escalated: boolean;
+  score: number;
+  reasons: string[];
   reason: string;
   contextBudgetTokens: number;
 };
 
-export function executorAssignment(routing: ModelRouting, stats: TaskGateStats | undefined): ExecutorAssignment {
+/**
+ * Route a task to an executor: the router picks a starting tier from the task's
+ * signals (or the task's explicit `tier`), then every `escalateAfterFailures`
+ * consecutive red attempts climb one rung: light → standard → deep → escalation.
+ */
+export function executorAssignment(routing: ModelRouting, stats: TaskGateStats | undefined, task?: Task): ExecutorAssignment {
+  const scored = task ? scoreTask(task, routing.router.thresholds) : { score: 0, tier: 'standard' as Tier, reasons: [] };
+  let tier: Tier = 'standard';
+  let why = 'router disabled';
+  if (task?.tier) {
+    tier = task.tier;
+    why = `plan sets tier ${task.tier}`;
+  } else if (routing.router.enabled && task) {
+    tier = scored.tier;
+    why = `score ${scored.score}`;
+  }
+
   const failures = stats?.consecutiveFailures ?? 0;
-  const escalate = routing.escalateAfterFailures > 0 && failures >= routing.escalateAfterFailures && routing.escalation !== routing.executor;
+  const climbs = routing.escalateAfterFailures > 0 ? Math.floor(failures / routing.escalateAfterFailures) : 0;
+  const ladder: Array<Tier | 'escalation'> = [...TIERS, 'escalation'];
+  const rungIndex = Math.min(ladder.length - 1, TIERS.indexOf(tier) + climbs);
+  const rung = ladder[rungIndex];
+
+  const spec: TierSpec = rung === 'escalation' ? { model: routing.escalation, effort: routing.tiers.deep.effort } : routing.tiers[rung];
+  const agent = TIER_AGENTS[rung === 'escalation' ? 'deep' : rung];
+  const escalated = climbs > 0 && rung !== tier;
+
   return {
-    agent: 'flow-executor',
-    model: escalate ? routing.escalation : routing.executor,
-    escalated: escalate,
-    reason: escalate
-      ? `${failures} consecutive red gate run(s) ≥ escalateAfterFailures (${routing.escalateAfterFailures})`
+    agent,
+    model: spec.model,
+    effort: spec.effort,
+    tier,
+    rung,
+    escalated,
+    score: scored.score,
+    reasons: scored.reasons,
+    reason: escalated
+      ? `${tier} → ${rung} after ${failures} consecutive red attempt(s)`
       : failures > 0
-        ? `${failures} red gate run(s); escalates at ${routing.escalateAfterFailures}`
-        : 'default executor model',
+        ? `${tier} (${why}); ${failures} red attempt(s), climbs every ${routing.escalateAfterFailures}`
+        : `${tier} (${why})`,
     contextBudgetTokens: routing.contextBudgetTokens,
   };
 }

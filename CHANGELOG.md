@@ -10,8 +10,9 @@
 ### Token-aware orchestration
 
 - `/flow-orchestrate` is now a thin dispatcher: one fresh `flow-executor` subagent per task (it fetches its own envelope), a ≤5-line status back, retries as fresh agents instead of `SendMessage` revivals, reviewer/hardener prompts and verdicts passed through files, and a stop at every phase boundary with `/clear`.
-- `init --claude` installs role subagents in `.claude/agents/` (`flow-executor`, `flow-reviewer`, `flow-hardener`) with explicit models from the new `orchestration.models` config (default: sonnet for every role, opus for escalation).
-- Escalation by evidence: gate runs are recorded per task (`.agent-flow/task-stats.json`); after `orchestration.escalateAfterFailures` consecutive red runs (default 2) the task's next executor is assigned the escalation model.
+- Deterministic task router (zero tokens): each task is scored from plan signals (scope size, criteria, hardening criteria, pitfall packs, smoke gate, dependencies, risky wording) into a tier — `light` (haiku/low), `standard` (sonnet/medium) or `deep` (sonnet/high) — configurable under `orchestration.tiers` / `orchestration.router`, overridable per task with `"tier"`. `plan show` previews each pending task's route.
+- `init --claude` installs role subagents in `.claude/agents/` with explicit `model` and `effort`: `flow-executor-light`, `flow-executor`, `flow-executor-deep`, `flow-reviewer`, `flow-hardener`.
+- Escalation by evidence: orchestrator gate runs are recorded per task (`.agent-flow/task-stats.json`); every `orchestration.escalateAfterFailures` consecutive red attempts (default 2) the task climbs one rung: light → standard → deep → escalation model (opus).
 - `next --brief` (one-line dispatch record) and `next --task <id>` (envelope for a specific task).
 - `orchestration.contextBudgetTokens` (default 150k): executors hand off via `.agent-flow/handoffs/<id>.md` instead of growing past it.
 - Fixed: the orchestrate skill committed before `advance`, which always made the cached gate result stale and forced a second gate run per task; it now advances first, then commits only the task's files and agent-flow state.
