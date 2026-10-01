@@ -120,6 +120,23 @@ describe('bench', () => {
     await expect(prepareBenchRun(TASK, 'v', { benchDir, now })).rejects.toThrow(/already exists/);
   });
 
+  it('wall time sums per-session spans instead of spanning the gap between sessions', async () => {
+    const run = await prepareBenchRun(TASK, 'plain', { benchDir });
+    await fs.copy(REFERENCE, path.join(run.workspace, 'src', 'slugify.js'));
+    const dir = path.join(claudeDir, 'projects', projectSlug(run.workspace));
+    const base = Date.now() + 1000;
+    const row = (session: string, id: string, offsetMin: number) => JSON.stringify({
+      type: 'assistant', sessionId: session, cwd: run.workspace, timestamp: new Date(base + offsetMin * 60_000).toISOString(), requestId: id,
+      message: { id, model: 'm', usage: { input_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 10, output_tokens: 1 } },
+    });
+    // Session A: 2 minutes. Session B, 4 hours later: 3 minutes.
+    await fs.outputFile(path.join(dir, 'a.jsonl'), `${row('a', 'a1', 0)}\n${row('a', 'a2', 2)}\n`);
+    await fs.outputFile(path.join(dir, 'b.jsonl'), `${row('b', 'b1', 240)}\n${row('b', 'b2', 243)}\n`);
+    const result = await finishBenchRun(path.dirname(run.workspace), { claudeDir, now: new Date(base + 250 * 60_000) });
+    expect(result.usage.sessions).toBe(2);
+    expect(result.wallMinutes).toBe(5);
+  });
+
   it('median', () => {
     expect(median([3, 1, 2])).toBe(2);
     expect(median([1, 2, 3, 4])).toBe(2.5);
