@@ -1,0 +1,27 @@
+ PASS  src/ok.test.js
+ FAIL  src/math.test.js
+  ● math › adds
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 3
+    Received: 2
+
+      1 | test('adds', () => {
+    > 2 |   expect(1 + 1).toBe(3);
+        |                 ^
+      3 | });
+
+      at Object.toBe (src/math.test.js:2:17)
+
+  ● math › parses
+
+    TypeError: Cannot read properties of undefined (reading 'x')
+
+      at parse (src/parse.js:10:5)
+
+Test Suites: 1 failed, 1 passed, 2 total
+Tests:       2 failed, 3 passed, 5 total
+Snapshots:   0 total
+Time:        1.234 s
+Ran all test suites.

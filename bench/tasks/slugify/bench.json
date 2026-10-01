@@ -1,0 +1,5 @@
+{
+  "name": "slugify",
+  "check": "node --test",
+  "prompt": "task.md"
+}

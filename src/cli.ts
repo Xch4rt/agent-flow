@@ -25,6 +25,10 @@ import { runReviewEmit, runReviewRecord } from './commands/review.js';
 import { runStart } from './commands/start.js';
 import { runStatus } from './commands/status.js';
 import { runUsage } from './commands/usage.js';
+import { runRunCommand } from './commands/run.js';
+import { runGuard } from './commands/guard.js';
+import { runDoctorTokens } from './commands/doctor-tokens.js';
+import { runBenchDiscard, runBenchFinish, runBenchPrepare, runBenchReport } from './commands/bench.js';
 import { brandTitle } from './core/terminal-ui.js';
 import { resolveRoot } from './core/project-root.js';
 import { runDashboard } from './dashboard/dashboard.js';
@@ -97,8 +101,10 @@ export function createProgram(): Command {
   program
     .command('doctor')
     .description('Check whether agent-flow files and local tools are present.')
-    .action(async () => {
-      await runDoctor();
+    .option('--tokens', 'Check token hygiene: always-loaded instructions, MCP servers, guard hook, executor agents, recent usage')
+    .action(async (options: { tokens?: boolean }) => {
+      if (options.tokens) await runDoctorTokens();
+      else await runDoctor();
     });
 
   program
@@ -272,6 +278,69 @@ export function createProgram(): Command {
     .option('--json', 'Print structured JSON')
     .action(async (options: { phase: string; verdict?: string; fromJson?: string; notes?: string; json?: boolean }) => {
       await runReviewRecord(options);
+    });
+
+  const bench = program
+    .command('bench')
+    .description('Reproducible A/B benchmarks of agent workflows: hidden acceptance tests + observed Claude Code tokens.');
+
+  bench
+    .command('prepare')
+    .argument('<task-dir>', 'Bench task folder (bench.json, task.md, seed/, hidden/)')
+    .requiredOption('--variant <name>', 'Workflow being measured (e.g. gsd, af-0.8, af-next, plain)')
+    .option('--dir <path>', 'Where runs live (default: $AGENT_FLOW_BENCH_DIR or ~/.agent-flow-bench)')
+    .option('--json', 'Print structured JSON')
+    .description('Create an isolated workspace for one run of a variant.')
+    .action(async (taskDir: string, options: { variant: string; dir?: string; json?: boolean }) => {
+      await runBenchPrepare(taskDir, options);
+    });
+
+  bench
+    .command('finish')
+    .argument('<run-dir>', 'Run folder printed by bench prepare')
+    .option('--force', 'Record even if the workspace is unchanged, or re-record a finished run')
+    .option('--json', 'Print structured JSON')
+    .description('Copy in the hidden tests, run the check, and record tokens used in the workspace.')
+    .action(async (runDir: string, options: { json?: boolean; force?: boolean }) => {
+      await runBenchFinish(runDir, options);
+    });
+
+  bench
+    .command('discard')
+    .argument('<run-dir>', 'Run folder to remove from reports')
+    .description('Delete a run (workspace and result) so it no longer counts.')
+    .action(async (runDir: string) => {
+      await runBenchDiscard(runDir);
+    });
+
+  bench
+    .command('report')
+    .option('--dir <path>', 'Where runs live (default: $AGENT_FLOW_BENCH_DIR or ~/.agent-flow-bench)')
+    .option('--task <name>', 'Only one task')
+    .option('--out <file>', 'Write the markdown table to a file')
+    .option('--json', 'Print structured JSON')
+    .description('Markdown table of medians per task × variant: pass rate, tokens, cache reads, peak context, wall time.')
+    .action(async (options: { dir?: string; task?: string; out?: string; json?: boolean }) => {
+      await runBenchReport(options);
+    });
+
+  program
+    .command('guard')
+    .description('Claude Code hook: warn on oversized or cold-resumed sessions (prompt) and stop executors past their context budget (tool). Reads the hook JSON on stdin.')
+    .argument('<event>', 'prompt | tool')
+    .action(async (event: string) => {
+      await runGuard(event);
+    });
+
+  program
+    .command('run')
+    .description('Run a noisy command (tests, typecheck, lint, build) and print only the failures; the full log goes to .agent-flow/logs/.')
+    .argument('<command...>', 'Command and arguments (put them after --)')
+    .option('--max-failures <n>', 'Failures to print (default 20)')
+    .option('--json', 'Print structured JSON')
+    .allowUnknownOption()
+    .action(async (parts: string[], options: { maxFailures?: string; json?: boolean }) => {
+      await runRunCommand(parts, options);
     });
 
   program
