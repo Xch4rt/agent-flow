@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## v0.9.0
+
+Token discipline: measure where tokens go, then spend fewer of them without lowering the bar — gates and independent review still decide quality.
+
+### Upgrading
+
+- `npm install -g @xch4rt/agent-flow@latest`, then `agent-flow init --claude --force` in each project to install the new skills, role subagents and session guard hook (review the diff if you customized `CLAUDE.md` or skills). `agent-flow doctor --tokens` checks the result.
+- New config keys in `.agent-flow/config.json` (`orchestration.router`, `orchestration.tiers`, `orchestration.models`, `orchestration.escalateAfterFailures`, `orchestration.contextBudgetTokens`, `guard.*`) all have defaults; existing configs keep working.
 
 ### Observed usage
 

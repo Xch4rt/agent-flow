@@ -1,8 +1,8 @@
 {
   "name": "@xch4rt/agent-flow",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "author": "Xch4rt <pab203.dev@gmail.com>",
-  "description": "Local workflow and memory layer for AI coding agents.",
+  "description": "Local workflow, memory and token discipline for AI coding agents (Claude Code, Codex).",
   "type": "module",
   "bin": {
     "agent-flow": "dist/cli.js"
@@ -30,8 +30,12 @@
   },
   "homepage": "https://github.com/Xch4rt/agent-flow#readme",
   "keywords": [
+    "claude-code",
     "codex",
     "ai",
+    "agents",
+    "tokens",
+    "prompt-caching",
     "cli",
     "developer-tools"
   ],

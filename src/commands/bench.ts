@@ -53,6 +53,7 @@ export async function runBenchFinish(runDir: string, options: { json?: boolean; 
   const u = result.usage;
   console.log(keyValue('Tokens:', `≈${u.inputEq.toLocaleString()} input-eq · cache read ${u.totals.cacheRead.toLocaleString()} · peak context ${u.peakContext.toLocaleString()} · ${u.sessions} session(s)`));
   if (u.sessions === 0) console.log(pc.yellow('No Claude Code transcripts found for this workspace — was the agent started inside it?'));
+  if (u.sessions > 1) console.log(pc.yellow(`${u.sessions} sessions were recorded in this workspace — if any was not the variant's own work (e.g. a session that ran finish), discard this run and re-run it cleanly.`));
   console.log(`Report: ${pc.cyan('agent-flow bench report')}`);
 }
 
