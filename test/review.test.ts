@@ -1,6 +1,7 @@
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'fs-extra';
+import { execa } from 'execa';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runInit } from '../src/commands/init.js';
 import { runAdvance } from '../src/commands/orchestrate.js';
@@ -8,6 +9,7 @@ import { runReviewEmit, runReviewRecord } from '../src/commands/review.js';
 import { emptyPlan, writePlan, loadPlan } from '../src/core/plan.js';
 import { reviewStatus, readReviewRecord, type ReviewRecord } from '../src/core/review.js';
 import type { Plan } from '../src/core/plan-schema.js';
+import { parsePorcelainZ, worktreeSignature } from '../src/core/gates.js';
 
 let tmpDir: string;
 const PASS = 'node -e ""';
@@ -137,5 +139,57 @@ describe('advance tier-1 review gate', () => {
     expect(process.exitCode).toBe(0);
     const loaded = await loadPlan(tmpDir);
     if (loaded.exists && loaded.valid) expect(loaded.plan.phases[0].status).toBe('done');
+  });
+});
+
+describe('worktree signature in a nested project (project root below the git toplevel)', () => {
+  async function nestedRepo(): Promise<{ repo: string; project: string }> {
+    const repo = tmpDir;
+    const project = path.join(repo, 'apps', 'my project');
+    await fs.ensureDir(path.join(project, 'src'));
+    await fs.writeFile(path.join(project, 'src', 'a.ts'), 'export const a = 1;\n');
+    await fs.ensureDir(path.join(repo, 'other'));
+    await fs.writeFile(path.join(repo, 'other', 'x.ts'), 'x\n');
+    await execa('git', ['init', '-q'], { cwd: repo });
+    await execa('git', ['config', 'user.email', 'test@example.com'], { cwd: repo });
+    await execa('git', ['config', 'user.name', 'Test User'], { cwd: repo });
+    await execa('git', ['add', '.'], { cwd: repo });
+    await execa('git', ['commit', '-q', '-m', 'init'], { cwd: repo });
+    await runInit({ codex: true, cwd: project });
+    await writePlan(project, twoTaskPhasePlan());
+    return { repo, project };
+  }
+
+  it('a just-recorded review is pass, not stale', async () => {
+    const { project } = await nestedRepo();
+    await runReviewRecord({ cwd: project, phase: '1', verdict: 'pass' });
+    const record = await readReviewRecord(project, '1');
+    expect(reviewStatus(record, await worktreeSignature(project))).toBe('pass');
+  });
+
+  it('ignores dirty files outside the project but tracks source changes inside it', async () => {
+    const { repo, project } = await nestedRepo();
+    const before = await worktreeSignature(project);
+    await fs.writeFile(path.join(repo, 'other', 'x.ts'), 'changed\n');
+    await fs.writeFile(path.join(repo, 'other', 'new.ts'), 'new\n');
+    expect(await worktreeSignature(project)).toBe(before);
+
+    await fs.writeFile(path.join(project, 'src', 'a.ts'), 'export const a = 2;\n');
+    const afterEdit = await worktreeSignature(project);
+    expect(afterEdit).not.toBe(before);
+    // Content of the in-project file is hashed (read from the right path).
+    await fs.writeFile(path.join(project, 'src', 'a.ts'), 'export const a = 3;\n');
+    expect(await worktreeSignature(project)).not.toBe(afterEdit);
+  });
+});
+
+describe('parsePorcelainZ', () => {
+  it('strips the prefix, keeps rename targets, handles spaces and an empty prefix', () => {
+    const out = ['R  apps/p/new name.ts', 'apps/p/old.ts', '?? apps/p/.agent-flow/reviews/1.json', ' M other/x.ts', ''].join('\0');
+    expect(parsePorcelainZ(out, 'apps/p/')).toEqual([
+      { code: 'R ', path: 'new name.ts' },
+      { code: '??', path: '.agent-flow/reviews/1.json' },
+    ]);
+    expect(parsePorcelainZ(' M src/a.ts\0', '')).toEqual([{ code: ' M', path: 'src/a.ts' }]);
   });
 });

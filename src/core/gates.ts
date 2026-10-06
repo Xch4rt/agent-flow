@@ -119,6 +119,27 @@ export async function runGates(root: string, names: string[], options: RunGateOp
 }
 
 /**
+ * Parses `git status --porcelain=v1 -z` into root-relative paths. `prefix` is
+ * `git rev-parse --show-prefix` (empty when root is the git toplevel). Renames
+ * and copies carry the original path as an extra NUL field, which is skipped.
+ */
+export function parsePorcelainZ(output: string, prefix: string): Array<{ code: string; path: string }> {
+  const fields = output.split('\0');
+  const result: Array<{ code: string; path: string }> = [];
+  for (let i = 0; i < fields.length; i += 1) {
+    const field = fields[i];
+    if (!field || field.length < 4) continue;
+    const code = field.slice(0, 2);
+    const full = field.slice(3);
+    if (code.includes('R') || code.includes('C')) i += 1; // skip the original path
+    if (!full.startsWith(prefix)) continue;
+    const relative = full.slice(prefix.length);
+    if (relative) result.push({ code, path: relative });
+  }
+  return result;
+}
+
+/**
  * A content signature of the working tree, so a cached gate result can be tied
  * to the exact code it ran against. Best-effort outside a git repo.
  */
@@ -128,29 +149,28 @@ export async function worktreeSignature(root: string): Promise<string> {
   const head = await execa('git', ['rev-parse', 'HEAD'], { cwd: root, reject: false });
   hash.update(typeof head.stdout === 'string' ? head.stdout : '');
 
-  const status = await execa('git', ['status', '--porcelain=v1', '--untracked-files=all'], { cwd: root, reject: false });
-  const porcelain = typeof status.stdout === 'string' ? status.stdout : '';
+  // Scope to the project root: in a monorepo the root may sit below the git
+  // toplevel, and porcelain paths are toplevel-relative. `-- .` limits status to
+  // the project; stripping `--show-prefix` makes paths root-relative. `-z` avoids
+  // C-style quoting of unusual paths.
+  const prefixResult = await execa('git', ['rev-parse', '--show-prefix'], { cwd: root, reject: false });
+  const prefix = typeof prefixResult.stdout === 'string' ? prefixResult.stdout.trim() : '';
+  const status = await execa('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', '.'], {
+    cwd: root,
+    reject: false,
+  });
+  const relativePaths = parsePorcelainZ(typeof status.stdout === 'string' ? status.stdout : '', prefix);
 
   // Exclude agent-flow's own generated bookkeeping (plan.json, gate-cache.json,
-  // memory index) so the signature tracks SOURCE changes, not orchestration writes.
+  // reviews, memory index) so the signature tracks SOURCE changes, not orchestration writes.
   const isIgnoredForSignature = (relative: string): boolean =>
     relative.startsWith('.agent-flow/') || relative.startsWith('.memory/');
 
-  const lines = porcelain
-    .split('\n')
-    .filter((line) => {
-      const entry = line.slice(3).trim();
-      if (!entry) return false;
-      const relative = entry.includes(' -> ') ? entry.split(' -> ')[1] : entry;
-      return !isIgnoredForSignature(relative);
-    });
+  const entries = relativePaths.filter((entry) => !isIgnoredForSignature(entry.path));
+  hash.update(entries.map((entry) => `${entry.code} ${entry.path}`).join('\n'));
 
-  hash.update(lines.join('\n'));
-
-  for (const line of lines) {
-    const entry = line.slice(3).trim();
-    const relative = entry.includes(' -> ') ? entry.split(' -> ')[1] : entry;
-    const filePath = path.join(root, relative);
+  for (const entry of entries) {
+    const filePath = path.join(root, entry.path);
     try {
       if ((await fs.pathExists(filePath)) && (await fs.stat(filePath)).isFile()) {
         hash.update(await fs.readFile(filePath));
