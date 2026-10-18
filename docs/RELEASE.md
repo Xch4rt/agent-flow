@@ -1,13 +1,13 @@
 # Release Checklist
 
-## Any release (current: v0.9.0)
+## Any release (current: v0.10.0)
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm test && pnpm typecheck && pnpm build
 npm pack --dry-run                     # only dist/, README.md, LICENSE, CHANGELOG.md, package.json
 npm pack && npm install -g ./xch4rt-agent-flow-<version>.tgz
-agent-flow --version && agent-flow doctor --tokens && agent-flow run -- node -e "console.log(1)"
+agent-flow --version && agent-flow doctor --tokens && agent-flow usage --agent codex --since 7d && agent-flow run -- node -e "console.log(1)"
 npm publish --access public            # needs npm login (and an OTP with 2FA)
 git tag v<version> && git push origin v<version>
 ```
