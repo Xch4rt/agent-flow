@@ -1,6 +1,7 @@
 import path from 'node:path';
 import fs from 'fs-extra';
 import { readConfig } from './config.js';
+import type { AgentId } from '../adapters/types.js';
 import type { Task } from './plan-schema.js';
 import { DEFAULT_TIER_THRESHOLDS, scoreTask, TIERS, type Tier, type TierThresholds } from './router.js';
 
@@ -14,7 +15,7 @@ import { DEFAULT_TIER_THRESHOLDS, scoreTask, TIERS, type Tier, type TierThreshol
 
 export type ModelRole = 'executor' | 'reviewer' | 'hardener';
 
-export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
 export type TierSpec = { model: string; effort: Effort };
 
 /** Executor subagent installed for each tier (effort is fixed per agent definition). */
@@ -24,7 +25,22 @@ export const TIER_AGENTS: Record<Tier, string> = {
   deep: 'flow-executor-deep',
 };
 
+/** Codex custom agent roles (`.codex/agents/*.toml`); role names must be lowercase letters, digits and underscores. */
+export const CODEX_TIER_AGENTS: Record<Tier, string> = {
+  light: 'flow_executor_light',
+  standard: 'flow_executor',
+  deep: 'flow_executor_deep',
+};
+
+export const CODEX_ROLE_NAMES = { reviewer: 'flow_reviewer', hardener: 'flow_hardener' } as const;
+
+export function tierAgentsFor(agent: AgentId): Record<Tier, string> {
+  return agent === 'codex' ? CODEX_TIER_AGENTS : TIER_AGENTS;
+}
+
 export type ModelRouting = {
+  /** Agent runtime these model names and agent names belong to. */
+  agent: AgentId;
   /** Executor model and effort per routed tier. */
   tiers: Record<Tier, TierSpec>;
   /** Deterministic routing by task signals; when disabled every task uses the standard tier. */
@@ -41,6 +57,7 @@ export type ModelRouting = {
 };
 
 export const DEFAULT_MODEL_ROUTING: ModelRouting = {
+  agent: 'claude',
   tiers: {
     light: { model: 'haiku', effort: 'low' },
     standard: { model: 'sonnet', effort: 'medium' },
@@ -55,6 +72,31 @@ export const DEFAULT_MODEL_ROUTING: ModelRouting = {
   contextBudgetTokens: 150_000,
 };
 
+/**
+ * Codex defaults (GPT-6 family, October 2026): the fast/affordable model for
+ * light tasks, the workhorse for everything else, the frontier model only as
+ * escalation. Codex efforts go up to `ultra`; `xhigh`/`max` sit in between.
+ */
+export const DEFAULT_CODEX_MODEL_ROUTING: ModelRouting = {
+  agent: 'codex',
+  tiers: {
+    light: { model: 'gpt-6-luna', effort: 'low' },
+    standard: { model: 'gpt-6.1-sol', effort: 'medium' },
+    deep: { model: 'gpt-6.1-sol', effort: 'high' },
+  },
+  router: { enabled: true, thresholds: DEFAULT_TIER_THRESHOLDS },
+  executor: 'gpt-6.1-sol',
+  reviewer: 'gpt-6.1-sol',
+  hardener: 'gpt-6.1-sol',
+  escalation: 'gpt-6-astra',
+  escalateAfterFailures: 2,
+  contextBudgetTokens: 150_000,
+};
+
+export function defaultRoutingFor(agent: AgentId): ModelRouting {
+  return agent === 'codex' ? DEFAULT_CODEX_MODEL_ROUTING : DEFAULT_MODEL_ROUTING;
+}
+
 function nonEmptyString(value: unknown, fallback: string): string {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback;
 }
@@ -63,29 +105,42 @@ function nonNegativeInt(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : fallback;
 }
 
-const EFFORTS = new Set<Effort>(['low', 'medium', 'high', 'xhigh', 'max']);
+/** Efforts each runtime accepts in an agent definition. */
+export const EFFORTS_BY_AGENT: Record<AgentId, ReadonlySet<Effort>> = {
+  claude: new Set<Effort>(['low', 'medium', 'high', 'xhigh', 'max']),
+  codex: new Set<Effort>(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']),
+};
 
-function tierSpec(value: unknown, fallback: TierSpec): TierSpec {
+function tierSpec(value: unknown, fallback: TierSpec, efforts: ReadonlySet<Effort>): TierSpec {
   const v = (value ?? {}) as Record<string, unknown>;
-  const effort = typeof v.effort === 'string' && EFFORTS.has(v.effort as Effort) ? (v.effort as Effort) : fallback.effort;
+  const effort = typeof v.effort === 'string' && efforts.has(v.effort as Effort) ? (v.effort as Effort) : fallback.effort;
   return { model: nonEmptyString(v.model, fallback.model), effort };
 }
 
-export async function getModelRouting(root: string): Promise<ModelRouting> {
+/**
+ * Model routing for one agent runtime. Claude reads `orchestration.tiers` /
+ * `orchestration.models`; Codex reads `orchestration.codex.tiers` /
+ * `orchestration.codex.models` (model slugs and efforts differ per runtime).
+ * Router thresholds, escalation cadence and the context budget are shared.
+ */
+export async function getModelRouting(root: string, agent: AgentId = 'claude'): Promise<ModelRouting> {
   const config = await readConfig(root);
   const orchestration = (config?.orchestration ?? {}) as Record<string, unknown>;
-  const models = (orchestration.models ?? {}) as Record<string, unknown>;
-  const tiers = (orchestration.tiers ?? {}) as Record<string, unknown>;
+  const scoped = agent === 'codex' ? ((orchestration.codex ?? {}) as Record<string, unknown>) : orchestration;
+  const models = (scoped.models ?? {}) as Record<string, unknown>;
+  const tiers = (scoped.tiers ?? {}) as Record<string, unknown>;
   const router = (orchestration.router ?? {}) as Record<string, unknown>;
   const thresholds = (router.thresholds ?? {}) as Record<string, unknown>;
-  const d = DEFAULT_MODEL_ROUTING;
+  const d = defaultRoutingFor(agent);
+  const efforts = EFFORTS_BY_AGENT[agent];
   // Back-compat: models.executor sets the standard tier when no tiers are configured.
   const standardFallback = { ...d.tiers.standard, model: nonEmptyString(models.executor, d.tiers.standard.model) };
   return {
+    agent,
     tiers: {
-      light: tierSpec(tiers.light, d.tiers.light),
-      standard: tierSpec(tiers.standard, standardFallback),
-      deep: tierSpec(tiers.deep, d.tiers.deep),
+      light: tierSpec(tiers.light, d.tiers.light, efforts),
+      standard: tierSpec(tiers.standard, standardFallback, efforts),
+      deep: tierSpec(tiers.deep, d.tiers.deep, efforts),
     },
     router: {
       enabled: router.enabled !== false,
@@ -148,6 +203,8 @@ export async function recordGateOutcome(root: string, taskId: string, ok: boolea
 }
 
 export type ExecutorAssignment = {
+  /** Agent runtime the names below belong to (claude: .claude/agents; codex: .codex/agents roles). */
+  runtime: AgentId;
   /** Subagent to spawn (its definition fixes the effort). */
   agent: string;
   /** Model to pass on the Agent call (overrides the definition's model). */
@@ -188,10 +245,11 @@ export function executorAssignment(routing: ModelRouting, stats: TaskGateStats |
   const rung = ladder[rungIndex];
 
   const spec: TierSpec = rung === 'escalation' ? { model: routing.escalation, effort: routing.tiers.deep.effort } : routing.tiers[rung];
-  const agent = TIER_AGENTS[rung === 'escalation' ? 'deep' : rung];
+  const agent = tierAgentsFor(routing.agent)[rung === 'escalation' ? 'deep' : rung];
   const escalated = climbs > 0 && rung !== tier;
 
   return {
+    runtime: routing.agent,
     agent,
     model: spec.model,
     effort: spec.effort,

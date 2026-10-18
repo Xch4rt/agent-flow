@@ -1,4 +1,4 @@
-import { DEFAULT_MODEL_ROUTING } from './models.js';
+import { DEFAULT_CODEX_MODEL_ROUTING, DEFAULT_MODEL_ROUTING } from './models.js';
 import type { ProjectDetection } from './detect-project.js';
 
 function commandLine(label: string, value: string | undefined): string {
@@ -28,15 +28,19 @@ ${commandLine('Typecheck', detection.commands.typecheck)}
 
 ## Agent Workflow
 
-1. For a fresh repo, run \`agent-flow init --codex\`, then \`agent-flow onboard\`, then \`$flow-resume\`.
-2. Use \`.planning/STATE.md\` as the current project truth.
-3. Use \`.planning/DECISIONS.md\` for durable technical decisions.
-4. Use \`.memory/*.jsonl\` as the reviewable append-only memory log.
-5. Treat \`.agent-flow/memory.db\` as an internal generated SQLite index. Do not manually edit it.
-6. Prefer \`agent-flow context <task>\` for focused task context before non-trivial agent work.
-7. Do not overwrite memory without explicit user instruction.
-8. Prefer small scoped changes and avoid unrelated refactors.
-9. Run detected verification commands before final response when possible.
+Skills are the same in both runtimes: \`$flow-*\` in Codex (\`.agents/skills/\`), \`/flow-*\` in Claude Code (\`.claude/skills/\`).
+
+1. For a fresh repo, run \`agent-flow init --codex\` or \`--claude\`, then \`agent-flow onboard\`, then \`flow-resume\`.
+2. Planned work: \`flow-plan\` authors \`.agent-flow/plan.json\`, \`flow-harden\` adds domain criteria, \`flow-orchestrate\` runs next → implement → gate → review → advance. \`agent-flow advance\` refuses to close work whose gates are not green for the current code.
+3. Use \`.planning/STATE.md\` as the current project truth.
+4. Use \`.planning/DECISIONS.md\` for durable technical decisions.
+5. Use \`.memory/*.jsonl\` as the reviewable append-only memory log.
+6. Treat \`.agent-flow/memory.db\` as an internal generated SQLite index. Do not manually edit it.
+7. Prefer \`agent-flow context <task>\` for focused task context before non-trivial agent work.
+8. Run noisy commands through \`agent-flow run -- <command>\`: only the failures reach your context.
+9. Do not overwrite memory without explicit user instruction.
+10. Prefer small scoped changes and avoid unrelated refactors.
+11. Run detected verification commands before final response when possible.
 
 ## Memory Files
 
@@ -98,12 +102,11 @@ export function roadmapTemplate(): string {
 
 - Keep project state accurate.
 - Capture durable decisions and useful implementation notes.
-- Use Codex skills for onboarding, resume, planning, verification, and closeout.
+- Use the flow skills for onboarding, resume, planning, hardening, orchestration, verification, and closeout.
 
 ## Later
 
 - Add richer memory indexing.
-- Add additional agent integrations after the Codex workflow is useful.
 `;
 }
 
@@ -181,6 +184,15 @@ export function configTemplate(detection: ProjectDetection, adapterIds: string[]
           reviewer: DEFAULT_MODEL_ROUTING.reviewer,
           hardener: DEFAULT_MODEL_ROUTING.hardener,
           escalation: DEFAULT_MODEL_ROUTING.escalation,
+        },
+        // Same roles for Codex (model slugs and efforts differ; efforts go up to "ultra").
+        codex: {
+          tiers: DEFAULT_CODEX_MODEL_ROUTING.tiers,
+          models: {
+            reviewer: DEFAULT_CODEX_MODEL_ROUTING.reviewer,
+            hardener: DEFAULT_CODEX_MODEL_ROUTING.hardener,
+            escalation: DEFAULT_CODEX_MODEL_ROUTING.escalation,
+          },
         },
         // Consecutive red attempts before a task climbs one rung: light → standard → deep → escalation.
         escalateAfterFailures: DEFAULT_MODEL_ROUTING.escalateAfterFailures,

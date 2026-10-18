@@ -72,9 +72,9 @@ export function createProgram(): Command {
   program
     .command('init')
     .description('Initialize agent-flow planning, memory, and optional agent skill files.')
-    .option('--codex', 'Install Codex skill workflows')
-    .option('--claude', 'Install Claude Code skill workflows and CLAUDE.md')
-    .option('--agent <agent>', 'Install agent adapter: codex, claude, or all')
+    .option('--codex', 'Install Codex skills (.agents/skills), agent roles (.codex/agents) and hooks (.codex/hooks.json)')
+    .option('--claude', 'Install Claude Code skills, subagents, the guard hook and CLAUDE.md')
+    .option('--agent <agent>', 'Install agent adapter: codex, claude, all, or none (base files only). With no adapter flag, init asks in a terminal (default: what is installed on this machine) and picks the installed runtimes otherwise')
     .option('--force', 'Overwrite existing generated files')
     .option('--force-memory', 'Overwrite existing memory JSONL files')
     .action(async (options: { codex?: boolean; claude?: boolean; agent?: string; force?: boolean; forceMemory?: boolean }) => {
@@ -196,8 +196,9 @@ export function createProgram(): Command {
   plan
     .command('show')
     .description('Render plan phases, task status, progress, and the next actionable task.')
+    .option('--agent <agent>', 'Preview routes with this runtime\'s agent names and models: codex | claude (default: the installed one, claude when both)')
     .option('--json', 'Print structured JSON')
-    .action(async (options: { json?: boolean }) => {
+    .action(async (options: { json?: boolean; agent?: string }) => {
       await runPlanShow(options);
     });
 
@@ -227,8 +228,9 @@ export function createProgram(): Command {
     .option('--budget-lines <number>', 'Approximate maximum context-pack lines')
     .option('--task <id>', 'Emit the envelope for this task instead of the next actionable one')
     .option('--brief', 'Print only a one-line dispatch record (task, title, executor model) for a thin orchestrator')
+    .option('--agent <agent>', 'Name the executor for this runtime: codex | claude (default: the installed one, claude when both)')
     .option('--json', 'Print structured JSON')
-    .action(async (options: { wave?: boolean; peek?: boolean; budgetLines?: string; json?: boolean; task?: string; brief?: boolean }) => {
+    .action(async (options: { wave?: boolean; peek?: boolean; budgetLines?: string; json?: boolean; task?: string; brief?: boolean; agent?: string }) => {
       await runNext(options);
     });
 
@@ -239,7 +241,8 @@ export function createProgram(): Command {
     .option('--strict', 'Fail (not skip) a gate that has no resolved command')
     .option('--json', 'Print structured JSON')
     .option('--no-record', 'Do not count this run toward model escalation (executor iterating within its own attempt)')
-    .action(async (options: { task?: string; strict?: boolean; json?: boolean; record?: boolean }) => {
+    .option('--agent <agent>', 'Name the next executor for this runtime after a red gate: codex | claude')
+    .action(async (options: { task?: string; strict?: boolean; json?: boolean; record?: boolean; agent?: string }) => {
       await runGateCommand(options);
     });
 
@@ -282,7 +285,7 @@ export function createProgram(): Command {
 
   const bench = program
     .command('bench')
-    .description('Reproducible A/B benchmarks of agent workflows: hidden acceptance tests + observed Claude Code tokens.');
+    .description('Reproducible A/B benchmarks of agent workflows: hidden acceptance tests + observed tokens (Claude Code or Codex).');
 
   bench
     .command('prepare')
@@ -298,10 +301,11 @@ export function createProgram(): Command {
   bench
     .command('finish')
     .argument('<run-dir>', 'Run folder printed by bench prepare')
+    .option('--agent <agent>', 'Whose sessions to measure: claude | codex (default claude)')
     .option('--force', 'Record even if the workspace is unchanged, or re-record a finished run')
     .option('--json', 'Print structured JSON')
     .description('Copy in the hidden tests, run the check, and record tokens used in the workspace.')
-    .action(async (runDir: string, options: { json?: boolean; force?: boolean }) => {
+    .action(async (runDir: string, options: { json?: boolean; force?: boolean; agent?: string }) => {
       await runBenchFinish(runDir, options);
     });
 
@@ -326,7 +330,7 @@ export function createProgram(): Command {
 
   program
     .command('guard')
-    .description('Claude Code hook: warn on oversized or cold-resumed sessions (prompt) and stop executors past their context budget (tool). Reads the hook JSON on stdin.')
+    .description('Claude Code / Codex hook: warn on oversized or cold-resumed sessions (prompt) and stop executors past their context budget (tool). Reads the hook JSON on stdin.')
     .argument('<event>', 'prompt | tool')
     .action(async (event: string) => {
       await runGuard(event);
@@ -345,15 +349,16 @@ export function createProgram(): Command {
 
   program
     .command('usage')
-    .description('Report observed Claude Code token usage for this project: cache breaks, peak context, subagents, skills.')
-    .option('--all', 'Scan every Claude Code project, not just this one')
+    .description('Report observed token usage for this project from Claude Code transcripts or Codex rollouts: cache breaks, peak context, subagents, skills.')
+    .option('--agent <agent>', 'Whose sessions to read: claude | codex (default: the installed one, claude when both)')
+    .option('--all', 'Scan every project, not just this one')
     .option('--since <when>', 'Only usage since 7d, 12h, 90m or an ISO date')
     .option('--session <id>', 'Only the session whose id starts with <id>')
-    .option('--dir <path>', 'Claude config dir (default: $CLAUDE_CONFIG_DIR or ~/.claude)')
+    .option('--dir <path>', 'Config dir (default: $CLAUDE_CONFIG_DIR or ~/.claude; $CODEX_HOME or ~/.codex)')
     .option('--top <n>', 'Rows per section (default 10)')
-    .option('--idle-minutes <n>', 'Gap after which a large cache write counts as a cold-cache rewrite (default 5)')
+    .option('--idle-minutes <n>', 'Gap after which a large uncached re-read counts as a cold-cache rewrite (default 5)')
     .option('--json', 'Print structured JSON')
-    .action(async (options: { all?: boolean; since?: string; session?: string; dir?: string; top?: string; idleMinutes?: string; json?: boolean }) => {
+    .action(async (options: { agent?: string; all?: boolean; since?: string; session?: string; dir?: string; top?: string; idleMinutes?: string; json?: boolean }) => {
       await runUsage(options);
     });
 
@@ -487,7 +492,7 @@ async function runFirstRunOrDashboard(): Promise<void> {
   console.log(pc.yellow('This repo is not configured for Agent Flow.'));
   console.log('');
   console.log('Recommended setup:');
-  console.log(`  1. ${pc.cyan('agent-flow init --codex')}  or  ${pc.cyan('agent-flow init --claude')}`);
+  console.log(`  1. ${pc.cyan('agent-flow init')}  ${pc.dim('(asks Codex / Claude Code / both; or --codex, --claude, --agent all)')}`);
   console.log(`  2. ${pc.cyan('agent-flow onboard')}`);
   console.log(`  3. ${pc.cyan('agent-flow doctor')}`);
 
@@ -497,30 +502,16 @@ async function runFirstRunOrDashboard(): Promise<void> {
   console.log('');
   const readline = await import('node:readline/promises');
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  let agentChoice: string;
   try {
     const answer = await rl.question(`${pc.cyan('?')} Run setup now? (y/N) `);
     if (answer.trim().toLowerCase() !== 'y') return;
-
-    console.log('');
-    console.log('Which agent setup do you want?');
-    console.log(`  1. ${pc.cyan('Codex')}`);
-    console.log(`  2. ${pc.cyan('Claude')}`);
-    console.log(`  3. ${pc.cyan('Both')}`);
-    console.log(`  4. ${pc.dim('Base files only')}`);
-    console.log('');
-    agentChoice = (await rl.question(`${pc.cyan('?')} Choice (1-4): `)).trim();
   } finally {
     rl.close();
   }
 
-  const initOptions: { codex?: boolean; claude?: boolean; cwd: string } = { cwd: root };
-  if (agentChoice === '1') initOptions.codex = true;
-  else if (agentChoice === '2') initOptions.claude = true;
-  else if (agentChoice === '3') { initOptions.codex = true; initOptions.claude = true; }
-
   console.log('');
-  await runInit(initOptions);
+  // No adapter flag: init asks (Codex / Claude Code / both / base), defaulting to what this machine has.
+  await runInit({ cwd: root, interactive: true });
   console.log('');
   await runOnboard({ cwd: root });
   console.log('');

@@ -1,6 +1,7 @@
 import fs from 'fs-extra';
 import pc from 'picocolors';
 import { executorAssignment, getModelRouting, readTaskStats } from '../core/models.js';
+import { resolveTargetAgent } from '../core/config.js';
 import { brandTitle, keyValue, section, statusLabel } from '../core/terminal-ui.js';
 import path from 'node:path';
 import {
@@ -26,7 +27,7 @@ import {
 
 export type PlanInitOptions = { cwd?: string; force?: boolean; scaffold?: boolean; json?: boolean };
 export type PlanValidateOptions = { cwd?: string; json?: boolean };
-export type PlanShowOptions = { cwd?: string; json?: boolean };
+export type PlanShowOptions = { cwd?: string; json?: boolean; /** codex | claude: whose agent names and models to preview */ agent?: string };
 export type PlanRenderOptions = { cwd?: string; json?: boolean };
 export type PlanHardenOptions = { cwd?: string; apply?: boolean; fromJson?: string; json?: boolean };
 
@@ -244,7 +245,7 @@ export async function runPlanShow(options: PlanShowOptions = {}): Promise<void> 
   console.log(
     keyValue('Progress:', `${progress.tasksDone}/${progress.tasksTotal} tasks (${progress.percent}%), ${progress.phasesDone}/${progress.phasesTotal} phases`),
   );
-  const routing = await getModelRouting(root);
+  const routing = await getModelRouting(root, await resolveTargetAgent(root, options.agent));
   const taskStats = await readTaskStats(root);
   console.log(section('Phases:'));
   for (const phase of plan.phases) {

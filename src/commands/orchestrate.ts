@@ -22,6 +22,8 @@ import {
 import { getReviewTier, readReviewRecord, reviewStatus } from '../core/review.js';
 import { executorAssignment, getModelRouting, readTaskStats, recordGateOutcome, type ExecutorAssignment } from '../core/models.js';
 import type { Phase, Plan, Task } from '../core/plan-schema.js';
+import { resolveTargetAgent } from '../core/config.js';
+import type { AgentId } from '../adapters/types.js';
 import { brandTitle, keyValue, section, statusLabel } from '../core/terminal-ui.js';
 
 export type NextOptions = {
@@ -34,6 +36,8 @@ export type NextOptions = {
   task?: string;
   /** Print only a one-line JSON dispatch record (task id, title, executor model) — for a thin orchestrator. */
   brief?: boolean;
+  /** Agent runtime whose agent names and model slugs to print (codex | claude). */
+  agent?: string;
 };
 export type GateCmdOptions = {
   cwd?: string;
@@ -42,6 +46,8 @@ export type GateCmdOptions = {
   json?: boolean;
   /** false = do not count this run toward escalation (an executor iterating on its own attempt). */
   record?: boolean;
+  /** Agent runtime whose executor to name after a red gate (codex | claude). */
+  agent?: string;
 };
 export type AdvanceOptions = { cwd?: string; task?: string; gate?: boolean; strict?: boolean; json?: boolean };
 
@@ -85,12 +91,12 @@ type TaskEnvelope = {
   executor: ExecutorAssignment;
 };
 
-async function buildTaskEnvelope(root: string, phase: Phase, task: Task, budgetLines: number): Promise<TaskEnvelope> {
+async function buildTaskEnvelope(root: string, phase: Phase, task: Task, budgetLines: number, agent: AgentId): Promise<TaskEnvelope> {
   const commands = await resolveGateCommands(root);
   const gateNames = gateNamesFor(task, await getDefaultGates(root));
   const pack = await buildContextPack(`${phase.title}: ${task.title}`, { cwd: root, limit: 5, budgetLines });
   const formattedPack = formatContextPack(pack, { budgetLines });
-  const executor = executorAssignment(await getModelRouting(root), (await readTaskStats(root))[task.id], task);
+  const executor = executorAssignment(await getModelRouting(root, agent), (await readTaskStats(root))[task.id], task);
   return { phase, task, gateNames, commands, pack, formattedPack, budgetLines, executor };
 }
 
@@ -118,7 +124,7 @@ function briefJson(env: TaskEnvelope): Record<string, unknown> {
       tier: env.executor.rung,
       escalated: env.executor.escalated,
     },
-    envelope: `agent-flow next --task ${env.task.id} --json`,
+    envelope: `agent-flow next --task ${env.task.id} --json${env.executor.runtime === 'codex' ? ' --agent codex' : ''}`,
   };
 }
 
@@ -143,9 +149,10 @@ export async function runNext(options: NextOptions = {}): Promise<void> {
   const plan = await loadValidPlan(root);
   if (!plan) return;
   const budgetLines = parseBudgetLines(options.budgetLines);
+  const agent = await resolveTargetAgent(root, options.agent);
 
   if (options.wave) {
-    await runNextWave(root, plan, budgetLines, Boolean(options.json), Boolean(options.peek), Boolean(options.brief));
+    await runNextWave(root, plan, budgetLines, Boolean(options.json), Boolean(options.peek), Boolean(options.brief), agent);
     return;
   }
 
@@ -169,7 +176,7 @@ export async function runNext(options: NextOptions = {}): Promise<void> {
     await writePlan(root, plan);
   }
 
-  const env = await buildTaskEnvelope(root, phase, task, budgetLines);
+  const env = await buildTaskEnvelope(root, phase, task, budgetLines, agent);
 
   if (options.brief) {
     console.log(JSON.stringify(briefJson(env)));
@@ -189,7 +196,7 @@ export async function runNext(options: NextOptions = {}): Promise<void> {
   console.log(`  2) on green:         ${pc.cyan(`agent-flow advance --task ${task.id}`)}`);
 }
 
-async function runNextWave(root: string, plan: Plan, budgetLines: number, json: boolean, peek: boolean, brief = false): Promise<void> {
+async function runNextWave(root: string, plan: Plan, budgetLines: number, json: boolean, peek: boolean, brief: boolean, agent: AgentId): Promise<void> {
   const wave = nextWave(plan);
   if (!wave) {
     console.log(brandTitle('agent-flow next --wave'));
@@ -211,7 +218,7 @@ async function runNextWave(root: string, plan: Plan, budgetLines: number, json: 
 
   const envelopes: TaskEnvelope[] = [];
   for (const { phase, task } of batch) {
-    envelopes.push(await buildTaskEnvelope(root, phase, task, budgetLines));
+    envelopes.push(await buildTaskEnvelope(root, phase, task, budgetLines, agent));
   }
 
   if (brief) {
@@ -290,7 +297,7 @@ export async function runGateCommand(options: GateCmdOptions = {}): Promise<void
     at: new Date().toISOString(),
   });
   const stats = options.record === false ? (await readTaskStats(root))[task.id] : await recordGateOutcome(root, task.id, run.ok);
-  const nextExecutor = executorAssignment(await getModelRouting(root), stats, task);
+  const nextExecutor = executorAssignment(await getModelRouting(root, await resolveTargetAgent(root, options.agent)), stats, task);
 
   if (options.json) {
     console.log(JSON.stringify({ task: task.id, ok: run.ok, results: run.results, ...(run.ok ? {} : { nextExecutor }) }, null, 2));

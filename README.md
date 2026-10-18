@@ -8,11 +8,11 @@ Local workflow, memory and token discipline for AI coding agents — Claude Code
 
 ```sh
 npm install -g @xch4rt/agent-flow
-agent-flow init --claude     # or --codex, or --agent all
+agent-flow init              # asks: Codex, Claude Code or both (or pass --codex / --claude / --agent all)
 agent-flow doctor --tokens   # token hygiene for this project
 ```
 
-Then, inside Claude Code:
+Then, inside Claude Code (`/flow-*`) or Codex (`$flow-*`):
 
 ```text
 /flow-plan <feature>     break work into phases/tasks with acceptance criteria
@@ -40,9 +40,9 @@ Quality is decided by gates and review; Agent Flow decides what it costs.
 | --- | --- |
 | **Thin orchestrator** | `/flow-orchestrate` dispatches one fresh executor per task, passes files instead of contents, and stops at phase boundaries — the main thread never balloons. |
 | **Zero-token router** | Each task is scored from the plan (scope, criteria, domain packs, risky wording) into `light` (haiku/low), `standard` (sonnet/medium) or `deep` (sonnet/high). Opus only after gates keep failing. `plan show` previews every route. |
-| **Session guard** | Claude Code hooks warn when you return to a big session after its prompt cache expired, or when it passes its budget; executors past their budget must hand off. |
+| **Session guard** | Claude Code and Codex hooks warn when you return to a big session after its prompt cache expired, or when it passes its budget; executors past their budget must hand off. |
 | **Compact output** | `agent-flow run -- pnpm test` prints only `file:line — reason` failures (vitest, jest, node:test, tsc, eslint, pytest); the full log stays on disk. Gates use it too. |
-| **Observed usage** | `agent-flow usage` reads Claude Code's own transcripts: cache writes vs reads, peak context, cold-cache rewrites, main thread vs subagents, per model, per skill, per project. |
+| **Observed usage** | `agent-flow usage` reads Claude Code transcripts or Codex rollouts (`--agent codex`): cached vs uncached input, peak context, cold-cache rewrites, main thread vs subagents, per model, per skill, per project. |
 | **Benchmarks** | `agent-flow bench` runs the same task under different workflows (plain, GSD, Agent Flow) with hidden acceptance tests and reports tokens, pass rate and time. |
 
 ```sh
@@ -77,7 +77,7 @@ agent-flow plan harden | <one agent> | agent-flow plan harden --apply --from-jso
 
 ## Skills and agents
 
-Installed by `agent-flow init --claude` (`.claude/`) and `init --codex` (`.codex/skills/`):
+Installed by `agent-flow init --claude` (`.claude/`) and `init --codex` (`.agents/skills/` + `.codex/`):
 
 | Skill | Use it when |
 | --- | --- |
@@ -88,9 +88,10 @@ Installed by `agent-flow init --claude` (`.claude/`) and `init --codex` (`.codex
 | `/flow-verify` | Inspect the diff, run checks, catch scope creep before handoff |
 | `/flow-onboard` / `/flow-resume` / `/flow-close` | First contact, session start, session end |
 
-Claude Code also gets role subagents with explicit model and effort (`flow-executor-light`, `flow-executor`, `flow-executor-deep`, `flow-reviewer`, `flow-hardener`) and the session guard hook, merged into `.claude/settings.json` without touching your settings. Models live in `.agent-flow/config.json` (`orchestration.tiers`, `orchestration.models`).
+Both runtimes get the same role agents with explicit model and effort — executors per tier, a reviewer and a hardener — and the session guard hooks, merged without touching your settings:
 
-Codex currently ships the continuity skills (`$flow-*`); the orchestration loop is Claude Code-first (Codex parity is on the roadmap).
+- **Claude Code**: `.claude/agents/flow-executor{-light,,-deep}.md`, `flow-reviewer.md`, `flow-hardener.md`; hook in `.claude/settings.json`. Models in `orchestration.tiers` / `orchestration.models` (haiku / sonnet / opus by default).
+- **Codex**: custom agent roles `.codex/agents/flow_executor{_light,,_deep}.toml`, `flow_reviewer.toml`, `flow_hardener.toml`; hooks in `.codex/hooks.json` (trust them once with `/hooks`). Models in `orchestration.codex.tiers` / `orchestration.codex.models` (gpt-6-luna / gpt-6.1-sol / gpt-6-astra by default, efforts up to `ultra`). `$flow-orchestrate` spawns them with `spawn_agent` and `fork_turns: none`, so each executor starts from its envelope, not from the thread's history.
 
 ## Memory & context packs
 
@@ -103,11 +104,13 @@ Planning lives in `.planning/`, append-only memory in `.memory/*.jsonl` (reviewa
 
 → Full details: **[docs/memory.md](docs/memory.md)**
 
-## Upgrading from 0.8
+## Upgrading from 0.9
 
 ```sh
 npm install -g @xch4rt/agent-flow@latest
 agent-flow init --claude --force   # regenerates skills, agents and CLAUDE.md — review the diff if you customized them
+agent-flow init --codex --force    # skills now live in .agents/skills/ (+ .codex/agents, .codex/hooks.json)
+rm -r .codex/skills/flow-*         # 0.9 location, deprecated by Codex — doctor flags leftovers
 agent-flow doctor --tokens
 ```
 
@@ -115,11 +118,11 @@ If `npm install -g` fails with `EACCES`, install Node with a version manager (nv
 
 ## Status
 
-Current (v0.9.x): token-aware orchestration (thin dispatcher, deterministic router, tiered executors, escalation by evidence), session guard, compact tool output, observed usage, benchmarks — on top of the orchestration loop (plan/next/gate/advance, tiered reviews, wave fan-out, smoke gate), domain hardening, deterministic onboarding, indexed context packs and the terminal dashboard.
+Current (v0.10.x): Claude Code and Codex at parity — the full loop as skills in both, role agents with explicit models, session guard hooks, observed usage from transcripts and rollouts — on top of token-aware orchestration (thin dispatcher, deterministic router, tiered executors, escalation by evidence), compact tool output, benchmarks, the orchestration loop (plan/next/gate/advance, tiered reviews, wave fan-out, smoke gate), domain hardening, deterministic onboarding, indexed context packs and the terminal dashboard.
 
-Roadmap: published bench results vs GSD · more bench tasks · symbol maps in task envelopes · orchestration skills for Codex · more pitfall packs (frontend/XSS, SQL, CLI, concurrency).
+Roadmap: published bench results vs GSD (both runtimes) · more bench tasks · symbol maps in task envelopes · more pitfall packs (frontend/XSS, SQL, CLI, concurrency).
 
-Known limits: no semantic search (deterministic scoring only) · monorepos not deeply understood · the guard relies on Claude Code hook inputs that may change between versions (it degrades to doing nothing).
+Known limits: no semantic search (deterministic scoring only) · monorepos not deeply understood · the guard relies on Claude Code / Codex hook inputs and transcript formats that may change between versions (it degrades to doing nothing).
 
 ## Demos
 

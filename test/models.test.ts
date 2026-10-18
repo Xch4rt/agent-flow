@@ -65,7 +65,8 @@ async function setOrchestration(root: string, patch: Record<string, unknown>): P
 }
 
 async function setupPlan(): Promise<void> {
-  await runInit({ codex: true, cwd: tmpDir });
+  // Claude-only project: the routed agent names below are Claude's (Codex names are covered in codex-adapter.test.ts).
+  await runInit({ claude: true, cwd: tmpDir });
   await writePlan(tmpDir, {
     ...emptyPlan(new Date('2026-01-01T00:00:00.000Z')),
     phases: [{

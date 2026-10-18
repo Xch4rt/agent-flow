@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.10.0
+
+Codex parity: the full daily loop, role agents with explicit models, the session guard and observed usage now work the same in Codex (CLI ≥ 0.160 / ChatGPT desktop, October 2026) and Claude Code.
+
+### Upgrading
+
+- `npm install -g @xch4rt/agent-flow@latest`, then `agent-flow init --codex --force` in each Codex project: skills move from `.codex/skills/` (deprecated by Codex) to `.agents/skills/`, and the roles and hooks are new. Delete the old `.codex/skills/flow-*` folders (`agent-flow doctor` flags them — Codex would otherwise list every skill twice). Trust the project in Codex and the two hooks once in `/hooks`.
+- New config block `.agent-flow/config.json` → `orchestration.codex` (`tiers`, `models`) with defaults; existing configs keep working. Claude's `orchestration.tiers` / `orchestration.models` are unchanged.
+- `next`, `gate` and `plan show` gain `--agent codex|claude`. With no flag they speak for the only installed adapter (Claude when both), so Claude-only projects see no change; Codex-only projects now get Codex role names (`flow_executor*`) and model slugs. `AGENT_FLOW_AGENT` sets the default.
+
+### Codex
+
+- `init --codex` installs the eight skills (`$flow-onboard`, `$flow-resume`, `$flow-quick`, `$flow-plan`, `$flow-harden`, `$flow-orchestrate`, `$flow-verify`, `$flow-close`) in `.agents/skills/<name>/SKILL.md`, each with an `agents/openai.yaml` (display metadata for the desktop app). `$flow-plan` now authors `.agent-flow/plan.json`; `$flow-harden` and `$flow-orchestrate` are new and mirror the Claude Code skills, using Codex's `spawn_agent` (`agent_type`, `model`, `reasoning_effort`, `fork_turns: none`), `/new` at phase boundaries, and never `followup_task` to retry.
+- Custom agent roles in `.codex/agents/`: `flow_executor_light`, `flow_executor`, `flow_executor_deep`, `flow_reviewer`, `flow_hardener` (`model`, `model_reasoning_effort`, `developer_instructions`), generated from `orchestration.codex`. Defaults: gpt-6-luna/low, gpt-6.1-sol/medium, gpt-6.1-sol/high; reviewer and hardener on gpt-6.1-sol; escalation to gpt-6-astra. Efforts accept `ultra`.
+- Session guard for Codex: `init --codex` merges a `UserPromptSubmit` and a `PreToolUse` hook into `.codex/hooks.json` (never replacing other hooks). `agent-flow guard` reads Codex rollouts (`token_usage_record`, or `token_count` events in older CLIs) as well as Claude transcripts, finds an executor's own rollout by the `agent_id` the hook sends, and budgets only `flow_executor*` roles. Prompt blocks now answer with both `continue: false` and `decision: "block"`, the forms both runtimes document.
+- `agent-flow usage --agent codex`: observed usage from `$CODEX_HOME/sessions` rollouts, matched to the project by `cwd` (or `--all`), with subagent rollouts attributed to their root session and role, per-turn models, `$skill` mentions, `spawn_agent` counts and `followup_task` / `send_message` continuations. Labels and weights follow OpenAI billing (no cache-write surcharge; `input` = uncached input; output 8x). Compressed `.jsonl.zst` rollouts are read on Node ≥ 22.15 and counted as skipped otherwise.
+- `doctor` checks the Codex files, the hooks and leftover legacy skills; `doctor --tokens` runs per installed runtime: AGENTS.md size (Codex truncates past 32 KiB), hooks, roles, and last-7d peak context and cold re-reads from rollouts.
+- `bench finish --agent codex` measures a Codex run.
+
+### Shared
+
+- `agent-flow init` with no adapter flag now asks which runtime to set up (Codex, Claude Code, both, base only) in a terminal, with the runtimes found on this machine as the default; without a terminal it installs the detected ones and prints what it picked. `--agent none` keeps the old base-only behaviour. The first-run flow of `agent-flow` (no arguments) uses the same chooser.
+- `AGENTS.md` template teaches the loop for both runtimes; `.agent-flow/config.json` template carries both model tables.
+- `ExecutorAssignment` carries `runtime`; `next --brief` prints the envelope command with `--agent codex` when routing for Codex.
+
 ## v0.9.0
 
 Token discipline: measure where tokens go, then spend fewer of them without lowering the bar — gates and independent review still decide quality.

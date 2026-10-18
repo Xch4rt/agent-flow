@@ -204,3 +204,61 @@ describe('doctor --tokens', () => {
     expect(byLabel(/peak context 300k/)).toMatchObject({ level: 'warning' });
   });
 });
+
+describe('Codex rollouts', () => {
+  const ROOT = '01a14d8a-1851-7490-89d0-f402bcc9a249';
+  const CHILD = '01a14d8a-2222-7490-89d0-f402bcc9a2ff';
+
+  function usageRow(at: string, context: number, thread = ROOT) {
+    return { timestamp: at, type: 'token_usage_record', payload: { thread_id: thread, session_id: ROOT, turn_id: 't', response_id: `r-${at}`, usage: { input_tokens: context, cached_input_tokens: Math.round(context * 0.8), cache_write_input_tokens: 0, output_tokens: 20 } } };
+  }
+  function countRow(at: string, context: number) {
+    return { timestamp: at, type: 'event_msg', payload: { type: 'token_count', info: { last_token_usage: { input_tokens: context, cached_input_tokens: 0, output_tokens: 1 } } } };
+  }
+  async function rollout(id: string, rows: unknown[], home = path.join(tmpDir, 'codex-home')): Promise<string> {
+    const file = path.join(home, 'sessions', '2026', '10', '18', `rollout-2026-10-18T05-44-18-${id}.jsonl`);
+    await fs.ensureDir(path.dirname(file));
+    await fs.writeFile(file, `${rows.map((r) => JSON.stringify(r)).join('\n')}\n`);
+    return file;
+  }
+
+  it('lastUsage reads token_usage_record and token_count lines', async () => {
+    const file = await rollout(ROOT, [{ type: 'session_meta', payload: { id: ROOT } }, usageRow(minutesAgo(9), 40_000), usageRow(minutesAgo(3), 210_000), { type: 'response_item', payload: { type: 'message' } }]);
+    expect(await lastUsage(file)).toEqual({ context: 210_000, at: minutesAgo(3) });
+    const old = await rollout(CHILD, [countRow(minutesAgo(2), 77_000)]);
+    expect(await lastUsage(old)).toEqual({ context: 77_000, at: minutesAgo(2) });
+  });
+
+  it('guardPrompt warns on a cold Codex session from its rollout', async () => {
+    const file = await rollout(ROOT, [usageRow(minutesAgo(30), 350_000)]);
+    const v = await guardPrompt({ transcript_path: file, session_id: ROOT }, cfg, tmpDir, NOW);
+    expect(v.message).toContain('30 min since the last reply');
+    expect(v.message).toContain('~350k tokens');
+  });
+
+  it('guardTool budgets flow_executor roles by their own thread, found via agent_id', async () => {
+    const home = path.join(tmpDir, 'codex-home');
+    const main = await rollout(ROOT, [usageRow(minutesAgo(1), 900_000)]);
+    await rollout(CHILD, [usageRow(minutesAgo(1), 180_000, CHILD)]);
+    const input = { transcript_path: main, session_id: ROOT, agent_id: CHILD, agent_type: 'flow_executor', tool_name: 'Bash', tool_input: { command: 'ls' } };
+    const v = await guardTool(input, cfg, { codexDir: home });
+    expect(v.deny).toContain('past the executor budget (150k)');
+    // Other Codex subagents are never budgeted, and the main thread never is.
+    expect(await guardTool({ ...input, agent_type: 'explorer' }, cfg, { codexDir: home })).toEqual({});
+    expect(await guardTool({ transcript_path: main, session_id: ROOT, tool_name: 'Bash' }, cfg, { codexDir: home })).toEqual({});
+    // An unknown thread id resolves to nothing → allow.
+    expect(await guardTool({ ...input, agent_id: '01a14d8a-9999-7490-89d0-f402bcc9a999' }, cfg, { codexDir: home })).toEqual({});
+    // Under budget → allow.
+    await rollout(CHILD, [usageRow(minutesAgo(1), 50_000, CHILD)]);
+    expect(await guardTool(input, cfg, { codexDir: home })).toEqual({});
+  });
+
+  it('prompt blocks carry both the common and the UserPromptSubmit-specific block fields', async () => {
+    await fs.outputJson(path.join(tmpDir, '.agent-flow', 'config.json'), { guard: { blockColdResume: true } });
+    const file = await rollout(ROOT, [usageRow(new Date(Date.now() - 40 * 60_000).toISOString(), 400_000)]);
+    await runGuard('prompt', { cwd: tmpDir, input: JSON.stringify({ transcript_path: file, session_id: ROOT }) });
+    const out = JSON.parse(String(vi.mocked(console.log).mock.calls[0][0]));
+    expect(out).toMatchObject({ continue: false, decision: 'block' });
+    expect(out.reason).toBe(out.stopReason);
+  });
+});

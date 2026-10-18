@@ -2,6 +2,7 @@ import path from 'node:path';
 import os from 'node:os';
 import readline from 'node:readline';
 import fs from 'fs-extra';
+import type { AgentId } from '../adapters/types.js';
 
 /**
  * Observed token usage from Claude Code session transcripts
@@ -9,6 +10,9 @@ import fs from 'fs-extra';
  *
  * These numbers are what the API reported per request — not an estimate.
  * They cover the whole session: history, tool output, file reads, subagents.
+ *
+ * The aggregation half (summaries, report) is shared with Codex rollouts
+ * (`codex-usage.ts`), which parse into the same `ParsedCall` shape.
  */
 
 export type UsageTotals = {
@@ -79,7 +83,11 @@ export type ProjectUsage = {
   idleRewriteTokens: number;
 };
 
+export type UsageWeights = { input: number; cacheWrite: number; cacheRead: number; output: number };
+
 export type UsageReport = {
+  /** Runtime whose sessions were read; decides how the four token kinds are labelled. */
+  agent: AgentId;
   source: string;
   files: number;
   sessions: SessionUsage[];
@@ -94,7 +102,7 @@ export type UsageReport = {
   byModel: Record<string, UsageTotals>;
   bySkill: Record<string, UsageTotals>;
   cacheBreaks: CacheBreak[];
-  weights: typeof INPUT_EQUIVALENT_WEIGHTS;
+  weights: UsageWeights;
 };
 
 /**
@@ -103,16 +111,31 @@ export type UsageReport = {
  * (cache write 1.25x, cache read 0.1x, output 5x of base input). A ranking
  * aid, not a bill — subscription limits are not published per token kind.
  */
-export const INPUT_EQUIVALENT_WEIGHTS = { input: 1, cacheWrite: 1.25, cacheRead: 0.1, output: 5 } as const;
+export const INPUT_EQUIVALENT_WEIGHTS: UsageWeights = { input: 1, cacheWrite: 1.25, cacheRead: 0.1, output: 5 };
+
+/**
+ * OpenAI (Codex) ratios: there is no cache-write surcharge, cached input is
+ * 0.1x and output ≈8x of uncached input. `input` here means uncached input.
+ */
+export const CODEX_EQUIVALENT_WEIGHTS: UsageWeights = { input: 1, cacheWrite: 1, cacheRead: 0.1, output: 8 };
 
 export type UsageOptions = {
   /** Only requests at or after this instant. */
   since?: Date;
-  /** Idle gap (minutes) after which a large cache write counts as a cold-cache rewrite. */
+  /** Idle gap (minutes) after which a large cold re-read counts as a cold-cache rewrite. */
   idleMinutes?: number;
-  /** Minimum cache-write tokens for a request to count as a cache break. */
+  /** Minimum cold tokens (cache write, or uncached input for Codex) for a request to count as a cache break. */
   breakThreshold?: number;
+  /** Runtime the files come from (labels + weights). */
+  agent?: AgentId;
+  /** Which token kind means "re-read cold": Claude writes the cache (`cacheWrite`); OpenAI just bills uncached `input`. */
+  coldField?: 'cacheWrite' | 'input';
+  weights?: UsageWeights;
 };
+
+export function coldTokens(usage: UsageTotals, field: 'cacheWrite' | 'input' = 'cacheWrite'): number {
+  return field === 'input' ? usage.input : usage.cacheWrite;
+}
 
 export function emptyTotals(): UsageTotals {
   return { calls: 0, input: 0, cacheWrite: 0, cacheRead: 0, output: 0 };
@@ -127,8 +150,7 @@ export function addTotals(target: UsageTotals, source: UsageTotals): UsageTotals
   return target;
 }
 
-export function inputEquivalent(t: UsageTotals): number {
-  const w = INPUT_EQUIVALENT_WEIGHTS;
+export function inputEquivalent(t: UsageTotals, w: UsageWeights = INPUT_EQUIVALENT_WEIGHTS): number {
   return Math.round(t.input * w.input + t.cacheWrite * w.cacheWrite + t.cacheRead * w.cacheRead + t.output * w.output);
 }
 
@@ -204,7 +226,7 @@ type RawUsage = {
   output_tokens?: number;
 };
 
-type ParsedCall = {
+export type ParsedCall = {
   key: string;
   sessionId: string;
   at: string;
@@ -218,7 +240,7 @@ type ParsedCall = {
 
 const SPAWN_TOOLS = new Set(['Agent', 'Task']);
 
-type ParsedTranscript = {
+export type ParsedTranscript = {
   calls: ParsedCall[];
   cwd?: string;
   sessionId?: string;
@@ -414,6 +436,7 @@ export async function parseTranscript(file: string, since?: Date): Promise<Parse
 export function summarizeCalls(calls: ParsedCall[], meta: { file: string; cwd?: string; sessionId: string }, options: UsageOptions = {}): SessionUsage {
   const idleMinutes = options.idleMinutes ?? 5;
   const breakThreshold = options.breakThreshold ?? 20_000;
+  const coldField = options.coldField ?? 'cacheWrite';
   const sorted = [...calls].sort((a, b) => a.at.localeCompare(b.at));
 
   const session: SessionUsage = {
@@ -441,13 +464,14 @@ export function summarizeCalls(calls: ParsedCall[], meta: { file: string; cwd?: 
 
     const time = Date.parse(call.at);
     const prev = lastAt.get(call.thread);
-    if (call.usage.cacheWrite >= breakThreshold) {
+    const cold = coldTokens(call.usage, coldField);
+    if (cold >= breakThreshold) {
       const gapMinutes = prev !== undefined && !Number.isNaN(time) ? (time - prev) / 60_000 : null;
       session.cacheBreaks.push({
         sessionId: call.sessionId,
         at: call.at,
         sidechain: call.sidechain,
-        cacheWrite: call.usage.cacheWrite,
+        cacheWrite: cold,
         gapMinutes: gapMinutes === null ? null : Math.round(gapMinutes * 10) / 10,
         reason: gapMinutes === null ? 'first-request' : gapMinutes >= idleMinutes ? 'idle' : 'prefix-change',
       });
@@ -468,6 +492,7 @@ function summarizeAgents(
 ): SubagentUsage[] {
   const idleMinutes = options.idleMinutes ?? 5;
   const breakThreshold = options.breakThreshold ?? 20_000;
+  const coldField = options.coldField ?? 'cacheWrite';
   const byAgent = new Map<string, ParsedCall[]>();
   for (const call of calls) {
     if (!call.sidechain) continue;
@@ -495,9 +520,10 @@ function summarizeAgents(
       addTotals(agent.totals, call.usage);
       agent.peakContext = Math.max(agent.peakContext, contextOf(call.usage));
       const time = Date.parse(call.at);
-      if (prev !== undefined && !Number.isNaN(time) && call.usage.cacheWrite >= breakThreshold && (time - prev) / 60_000 >= idleMinutes) {
+      const cold = coldTokens(call.usage, coldField);
+      if (prev !== undefined && !Number.isNaN(time) && cold >= breakThreshold && (time - prev) / 60_000 >= idleMinutes) {
         agent.idleRewrites += 1;
-        agent.idleRewriteTokens += call.usage.cacheWrite;
+        agent.idleRewriteTokens += cold;
       }
       if (!Number.isNaN(time)) prev = time;
     }
@@ -510,17 +536,21 @@ function summarizeAgents(
   return out;
 }
 
+export type TranscriptParser = (file: string, since?: Date) => Promise<ParsedTranscript>;
+
 export async function buildUsageReport(
   files: string[],
   source: string,
   options: UsageOptions = {},
+  parse: TranscriptParser = parseTranscript,
 ): Promise<UsageReport> {
+  const weights = options.weights ?? INPUT_EQUIVALENT_WEIGHTS;
   // Subagent transcripts may live in their own files; group every call by session id.
   const bySession = new Map<string, { calls: ParsedCall[]; file: string; cwd?: string; continuations: Record<string, number> }>();
   const agentTypes: Record<string, string> = {};
   let spawns = 0;
   for (const file of files) {
-    const parsed = await parseTranscript(file, options.since);
+    const parsed = await parse(file, options.since);
     Object.assign(agentTypes, parsed.agentTypes);
     spawns += parsed.spawns;
     const sessionKey = parsed.sessionId ?? parsed.calls[0]?.sessionId;
@@ -553,10 +583,11 @@ export async function buildUsageReport(
     agents.push(...summarizeAgents(unique, sessionId, entry.cwd, agentTypes, entry.continuations, options));
     continuations += Object.values(entry.continuations).reduce((a, b) => a + b, 0);
   }
-  sessions.sort((a, b) => inputEquivalent(b.totals) - inputEquivalent(a.totals));
-  agents.sort((a, b) => inputEquivalent(b.totals) - inputEquivalent(a.totals));
+  sessions.sort((a, b) => inputEquivalent(b.totals, weights) - inputEquivalent(a.totals, weights));
+  agents.sort((a, b) => inputEquivalent(b.totals, weights) - inputEquivalent(a.totals, weights));
 
   const report: UsageReport = {
+    agent: options.agent ?? 'claude',
     source,
     files: files.length,
     sessions,
@@ -571,7 +602,7 @@ export async function buildUsageReport(
     byModel: {},
     bySkill: {},
     cacheBreaks: [],
-    weights: INPUT_EQUIVALENT_WEIGHTS,
+    weights,
   };
   for (const s of sessions) {
     addTotals(report.totals, s.totals);
