@@ -16,14 +16,23 @@ import {
 } from '../core/templates.js';
 import { printFirstRunAgent, section, statusLabel } from '../core/terminal-ui.js';
 import { getAdapter, type AgentId } from '../adapters/registry.js';
+import { detectInstalledRuntimes } from '../core/detect-runtimes.js';
 
 export type InitOptions = {
   codex?: boolean;
   claude?: boolean;
+  /** codex | claude | all | none (none = base files only). */
   agent?: string;
   force?: boolean;
   forceMemory?: boolean;
   cwd?: string;
+  /**
+   * With no adapter flag: ask in a terminal (default when stdin/stdout are a TTY
+   * and CI is unset), or pick what is installed on this machine. `false` never asks.
+   */
+  interactive?: boolean;
+  /** Test seam / custom UI: answers the setup question with "1".."4". */
+  ask?: (question: string) => Promise<string>;
 };
 
 function baseFiles(root: string, detection: Awaited<ReturnType<typeof detectProject>>): Array<{ path: string; content: string }> {
@@ -63,30 +72,84 @@ function printResults(root: string, results: WriteResult[]): void {
   }
 }
 
-export function resolveAdapters(options: InitOptions): AgentId[] {
+/** Adapters named explicitly by flags; null when no flag said anything (so init may ask or detect). */
+export function resolveAdapters(options: InitOptions): AgentId[] | null {
   const ids: AgentId[] = [];
+  let explicit = false;
 
   if (options.agent) {
+    explicit = true;
     const value = options.agent.toLowerCase();
     if (value === 'all') {
       ids.push('codex', 'claude');
     } else if (value === 'codex' || value === 'claude') {
       ids.push(value);
-    } else {
-      throw new Error(`Unknown agent: ${options.agent}. Allowed values: codex, claude, all`);
+    } else if (value !== 'none') {
+      throw new Error(`Unknown agent: ${options.agent}. Allowed values: codex, claude, all, none`);
     }
   }
 
-  if (options.codex && !ids.includes('codex')) ids.push('codex');
-  if (options.claude && !ids.includes('claude')) ids.push('claude');
+  if (options.codex && !ids.includes('codex')) { ids.push('codex'); explicit = true; }
+  if (options.claude && !ids.includes('claude')) { ids.push('claude'); explicit = true; }
 
-  return ids;
+  return explicit ? ids : null;
+}
+
+const CHOICES: Record<string, AgentId[]> = { '1': ['codex'], '2': ['claude'], '3': ['codex', 'claude'], '4': [] };
+
+function choiceFor(detected: AgentId[]): string {
+  if (detected.length === 2) return '3';
+  if (detected[0] === 'codex') return '1';
+  if (detected[0] === 'claude') return '2';
+  return '4';
+}
+
+function describe(ids: AgentId[]): string {
+  return ids.length === 0 ? 'base files only' : ids.map((id) => (id === 'codex' ? 'Codex' : 'Claude Code')).join(' + ');
+}
+
+async function askInTerminal(question: string): Promise<string> {
+  const readline = await import('node:readline/promises');
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return await rl.question(question);
+  } finally {
+    rl.close();
+  }
+}
+
+/**
+ * Which adapters to install when no flag says: ask (interactive) with the
+ * detected runtimes as the default answer, or just take the detected ones.
+ */
+export async function chooseAdapters(options: InitOptions = {}): Promise<AgentId[]> {
+  const detected = await detectInstalledRuntimes();
+  const suggested = choiceFor(detected);
+  const interactive = options.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY && !process.env.CI);
+
+  if (!interactive) {
+    console.log(`${statusLabel('ok')} detected on this machine: ${describe(detected)} → installing ${describe(CHOICES[suggested])} ${pc.dim('(pass --codex, --claude, --agent all or --agent none to choose)')}`);
+    return CHOICES[suggested];
+  }
+
+  console.log('Which agent setup do you want?');
+  console.log(`  1. ${pc.cyan('Codex')}        ${pc.dim('skills in .agents/skills, roles in .codex/agents, hooks in .codex/hooks.json')}`);
+  console.log(`  2. ${pc.cyan('Claude Code')}  ${pc.dim('skills and agents in .claude, CLAUDE.md, guard hook in .claude/settings.json')}`);
+  console.log(`  3. ${pc.cyan('Both')}`);
+  console.log(`  4. ${pc.dim('Base files only')}`);
+  if (detected.length > 0) console.log(pc.dim(`Detected on this machine: ${describe(detected)}.`));
+  console.log('');
+  const ask = options.ask ?? askInTerminal;
+  const answer = (await ask(`${pc.cyan('?')} Choice (1-4) [${suggested}]: `)).trim() || suggested;
+  const chosen = CHOICES[answer];
+  if (!chosen) throw new Error(`Invalid choice: ${answer}. Pick 1, 2, 3 or 4.`);
+  return chosen;
 }
 
 export async function runInit(options: InitOptions): Promise<void> {
   const root = options.cwd ?? process.cwd();
   const detection = await detectProject(root);
-  const adapterIds = resolveAdapters(options);
+  const adapterIds = resolveAdapters(options) ?? (await chooseAdapters(options));
   const results: WriteResult[] = [];
 
   const base = baseFiles(root, detection);

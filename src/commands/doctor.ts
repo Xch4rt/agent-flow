@@ -10,6 +10,7 @@ import { loadPlan, parseRequirementUniverse, validatePlanStructure } from '../co
 import { brandTitle, section, statusLabel } from '../core/terminal-ui.js';
 import { getAdapter, type AgentId } from '../adapters/registry.js';
 import { readInstalledAdapters } from '../core/config.js';
+import { codexHooksInstalled, legacyCodexSkillDirs } from '../core/codex-settings.js';
 
 export const planningFiles = [
   '.planning/PROJECT.md',
@@ -21,12 +22,14 @@ export const planningFiles = [
 ];
 
 export const codexSkillFiles = [
-  '.codex/skills/flow-onboard/SKILL.md',
-  '.codex/skills/flow-resume/SKILL.md',
-  '.codex/skills/flow-quick/SKILL.md',
-  '.codex/skills/flow-plan/SKILL.md',
-  '.codex/skills/flow-verify/SKILL.md',
-  '.codex/skills/flow-close/SKILL.md',
+  '.agents/skills/flow-onboard/SKILL.md',
+  '.agents/skills/flow-resume/SKILL.md',
+  '.agents/skills/flow-quick/SKILL.md',
+  '.agents/skills/flow-plan/SKILL.md',
+  '.agents/skills/flow-harden/SKILL.md',
+  '.agents/skills/flow-orchestrate/SKILL.md',
+  '.agents/skills/flow-verify/SKILL.md',
+  '.agents/skills/flow-close/SKILL.md',
 ];
 
 export const claudeSkillFiles = [
@@ -92,6 +95,23 @@ export async function runDoctor(options: { cwd?: string } = {}): Promise<void> {
       checks.push({
         label: file,
         ok: await fs.pathExists(path.join(root, file)),
+      });
+    }
+  }
+
+  if (installedAdapters.includes('codex')) {
+    const hooks = await codexHooksInstalled(root);
+    checks.push({
+      label: '.codex/hooks.json guard hooks',
+      ok: hooks.prompt && hooks.tool,
+      detail: hooks.prompt && hooks.tool ? 'trust them once with /hooks in Codex' : 'run agent-flow init --codex',
+    });
+    const legacy = await legacyCodexSkillDirs(root);
+    if (legacy.length > 0) {
+      checks.push({
+        label: 'legacy Codex skills',
+        ok: false,
+        detail: `${legacy.length} skill(s) still in .codex/skills/ (deprecated; Codex would list them twice) — delete: rm -r ${legacy.join(' ')}`,
       });
     }
   }

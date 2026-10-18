@@ -8,8 +8,11 @@ async function readStdin(): Promise<string> {
 }
 
 /**
- * Claude Code hook entrypoint: `agent-flow guard prompt` (UserPromptSubmit) or
- * `agent-flow guard tool` (PreToolUse, installed on executor subagents).
+ * Claude Code / Codex hook entrypoint: `agent-flow guard prompt`
+ * (UserPromptSubmit) or `agent-flow guard tool` (PreToolUse — on executor
+ * subagents in Claude Code, project-wide in Codex where it only acts inside
+ * `flow_executor*` roles). Both runtimes send the same hook JSON and accept the
+ * same `systemMessage` / `continue` / `permissionDecision` answers.
  * Never fails the hook: any error means "allow, say nothing".
  */
 export async function runGuard(event: string, options: { cwd?: string; input?: string } = {}): Promise<void> {
@@ -22,7 +25,8 @@ export async function runGuard(event: string, options: { cwd?: string; input?: s
     if (event === 'prompt') {
       const verdict = await guardPrompt(input, cfg, root);
       if (verdict.block && verdict.message) {
-        console.log(JSON.stringify({ continue: false, stopReason: verdict.message, systemMessage: verdict.message }));
+        // `continue:false` is the common form; `decision: block` is the UserPromptSubmit-specific one both runtimes document.
+        console.log(JSON.stringify({ continue: false, stopReason: verdict.message, systemMessage: verdict.message, decision: 'block', reason: verdict.message }));
       } else if (verdict.message) {
         console.log(JSON.stringify({ systemMessage: verdict.message }));
       }

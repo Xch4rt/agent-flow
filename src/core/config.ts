@@ -34,3 +34,20 @@ export async function readInstalledAdapters(root: string): Promise<AgentId[]> {
 
   return ids;
 }
+
+/**
+ * Which agent runtime a command should speak for (agent names, model slugs).
+ * Explicit flag wins; otherwise the only installed adapter; Claude when both
+ * or neither are installed (back-compat with 0.9 output).
+ */
+export async function resolveTargetAgent(root: string, explicit?: string): Promise<AgentId> {
+  if (explicit !== undefined) {
+    const value = explicit.toLowerCase();
+    if (value === 'codex' || value === 'claude') return value;
+    throw new Error(`Unknown agent: ${explicit}. Allowed values: codex, claude`);
+  }
+  const env = process.env.AGENT_FLOW_AGENT?.toLowerCase();
+  if (env === 'codex' || env === 'claude') return env;
+  const installed = await readInstalledAdapters(root);
+  return installed.length === 1 && installed[0] === 'codex' ? 'codex' : 'claude';
+}

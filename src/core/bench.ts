@@ -3,6 +3,8 @@ import path from 'node:path';
 import { execa } from 'execa';
 import fs from 'fs-extra';
 import { buildUsageReport, findTranscriptFiles, inputEquivalent, type UsageTotals } from './claude-usage.js';
+import { buildCodexUsageReport, findCodexRolloutFiles } from './codex-usage.js';
+import type { AgentId } from '../adapters/types.js';
 import { runCompact } from './run-compact.js';
 
 /**
@@ -124,7 +126,7 @@ export async function workspaceUnchanged(workspace: string): Promise<boolean> {
   return count <= 1 && String(status.stdout ?? '').trim() === '';
 }
 
-export async function finishBenchRun(runDir: string, options: { claudeDir?: string; now?: Date; force?: boolean } = {}): Promise<BenchResult> {
+export async function finishBenchRun(runDir: string, options: { claudeDir?: string; now?: Date; force?: boolean; /** whose sessions to measure (default claude) */ agent?: AgentId } = {}): Promise<BenchResult> {
   const dir = path.resolve(runDir);
   const run = (await fs.readJson(path.join(dir, 'run.json'))) as BenchRun;
   const spec = await loadBenchSpec(run.taskDir);
@@ -141,8 +143,15 @@ export async function finishBenchRun(runDir: string, options: { claudeDir?: stri
   const check = await runCompact(run.workspace, spec.check);
 
   const since = new Date(run.startedAt);
-  const { files, source } = await findTranscriptFiles({ projectPath: run.workspace, dir: options.claudeDir, since });
-  const report = await buildUsageReport(files, source, { since });
+  const report = options.agent === 'codex'
+    ? await (async () => {
+        const { files, source } = await findCodexRolloutFiles({ projectPath: run.workspace, dir: options.claudeDir, since });
+        return buildCodexUsageReport(files, source, { since });
+      })()
+    : await (async () => {
+        const { files, source } = await findTranscriptFiles({ projectPath: run.workspace, dir: options.claudeDir, since });
+        return buildUsageReport(files, source, { since });
+      })();
   const peakContext = report.sessions.reduce((m, s) => Math.max(m, s.peakContext), 0);
   const idleRewriteTokens = report.cacheBreaks.filter((b) => b.reason === 'idle').reduce((sum, b) => sum + b.cacheWrite, 0);
 
@@ -164,7 +173,7 @@ export async function finishBenchRun(runDir: string, options: { claudeDir?: stri
       totals: report.totals,
       main: report.main,
       subagents: report.subagents,
-      inputEq: inputEquivalent(report.totals),
+      inputEq: inputEquivalent(report.totals, report.weights),
       peakContext,
       idleRewriteTokens,
       models: Object.keys(report.byModel),

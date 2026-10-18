@@ -2,16 +2,21 @@ import path from 'node:path';
 import fs from 'fs-extra';
 import { readConfig } from './config.js';
 import { getModelRouting } from './models.js';
+import { findRolloutByThreadId, isRolloutFile, threadIdFromFile } from './codex-sessions.js';
 
 /**
- * Session guard for Claude Code hooks.
+ * Session guard for Claude Code and Codex hooks (both send the same JSON).
  *
- * Reads the real usage Claude Code recorded in the session transcript and
+ * Reads the real usage the runtime recorded in the session transcript and
  * warns (or, opt-in, blocks) before the two patterns that dominate token
  * spend: a session whose context keeps growing, and returning to a big
  * session after its prompt cache expired. Inside executor subagents it can
  * deny further tool calls once the agent's context passes its budget, so the
  * agent writes a handoff instead of growing.
+ *
+ * Transcript formats: Claude Code `~/.claude/projects/<slug>/<session>.jsonl`
+ * (assistant rows with `message.usage`), Codex `rollout-*.jsonl` (lines of
+ * `token_usage_record`, or `event_msg`/`token_count` in older CLIs).
  *
  * A guard must never break a session: every failure path is "allow, silently".
  */
@@ -74,6 +79,22 @@ export async function getGuardConfig(root: string): Promise<GuardConfig> {
 
 export type LastUsage = { context: number; at?: string };
 
+/** Context of one Codex usage line (`input_tokens` already includes the cached part), or null when the row is not one. */
+function codexRowContext(row: Record<string, unknown>): number | null {
+  const payload = row.payload as Record<string, unknown> | undefined;
+  if (!payload) return null;
+  if (row.type === 'token_usage_record') {
+    const u = payload.usage as Record<string, unknown> | undefined;
+    return u ? num(u.input_tokens, 0) : null;
+  }
+  if (row.type === 'event_msg' && payload.type === 'token_count') {
+    const info = payload.info as Record<string, unknown> | undefined;
+    const u = info?.last_token_usage as Record<string, unknown> | undefined;
+    return u ? num(u.input_tokens, 0) : null;
+  }
+  return null;
+}
+
 /** Last API usage recorded in a transcript, reading only its tail (transcripts can be huge). */
 export async function lastUsage(file: string, tailBytes = 512 * 1024): Promise<LastUsage | null> {
   let handle: fs.promises.FileHandle | undefined;
@@ -93,12 +114,15 @@ export async function lastUsage(file: string, tailBytes = 512 * 1024): Promise<L
       } catch {
         continue;
       }
+      const at = typeof row.timestamp === 'string' ? row.timestamp : undefined;
+      const codex = codexRowContext(row);
+      if (codex !== null) return { context: codex, at };
       const message = row.message as Record<string, unknown> | undefined;
       if (row.type !== 'assistant' || !message || message.model === '<synthetic>') continue;
       const u = message.usage as Record<string, unknown> | undefined;
       if (!u) continue;
       const context = num(u.input_tokens, 0) + num(u.cache_creation_input_tokens, 0) + num(u.cache_read_input_tokens, 0);
-      return { context, at: typeof row.timestamp === 'string' ? row.timestamp : undefined };
+      return { context, at };
     }
     return null;
   } catch {
@@ -108,16 +132,46 @@ export async function lastUsage(file: string, tailBytes = 512 * 1024): Promise<L
   }
 }
 
-/** Resolve the transcript this hook call belongs to, and whether it is a subagent's. */
-export async function resolveTranscript(input: HookInput): Promise<{ file: string; subagent: boolean } | null> {
+/** Codex names agent-flow's executor roles `flow_executor*`; other subagents are not budgeted. */
+export function isExecutorAgentType(agentType: string | undefined): boolean {
+  return typeof agentType === 'string' && /^flow[-_]executor/.test(agentType);
+}
+
+/**
+ * Resolve the transcript this hook call belongs to, and whether it is a subagent's.
+ *
+ * Claude Code: subagent transcripts live next to the session file
+ * (`<session>/subagents/agent-<id>.jsonl`). Codex: a spawned agent is its own
+ * thread with its own rollout, found by the `agent_id` the hook input carries;
+ * the hook's `transcript_path` may still point at the parent rollout.
+ */
+export async function resolveTranscript(input: HookInput, options: { codexDir?: string } = {}): Promise<{ file: string; subagent: boolean } | null> {
   const main = input.transcript_path;
-  if (!main) return null;
-  if (/[\\/]subagents[\\/]agent-[^\\/]+\.jsonl$/.test(main)) return { file: main, subagent: true };
-  if (input.agent_id && input.session_id) {
+  if (!main && !(input.agent_id && isRolloutLike(input))) return null;
+
+  if (main && /[\\/]subagents[\\/]agent-[^\\/]+\.jsonl$/.test(main)) return { file: main, subagent: true };
+
+  const codex = (main && isRolloutFile(main)) || isRolloutLike(input);
+  if (codex) {
+    if (input.agent_id) {
+      if (main && threadIdFromFile(main) === input.agent_id) return { file: main, subagent: true };
+      const rollout = await findRolloutByThreadId(input.agent_id, options.codexDir);
+      if (rollout) return { file: rollout, subagent: true };
+      return null;
+    }
+    return main ? { file: main, subagent: false } : null;
+  }
+
+  if (input.agent_id && input.session_id && main) {
     const candidate = path.join(path.dirname(main), input.session_id, 'subagents', `agent-${input.agent_id}.jsonl`);
     if (await fs.pathExists(candidate)) return { file: candidate, subagent: true };
   }
-  return { file: main, subagent: false };
+  return main ? { file: main, subagent: false } : null;
+}
+
+/** Codex hook inputs name the role in `agent_type`; Claude's carry no such field for its own executors. */
+function isRolloutLike(input: HookInput): boolean {
+  return Boolean(input.agent_type && /^[a-z0-9_]+$/.test(input.agent_type) && input.agent_id && /^[0-9a-f-]{36}$/.test(input.agent_id));
 }
 
 function k(tokens: number): string {
@@ -181,9 +235,11 @@ function isHandoffWrite(input: HookInput): boolean {
   return typeof target === 'string' && /[\\/]?\.agent-flow[\\/]handoffs[\\/]/.test(target);
 }
 
-export async function guardTool(input: HookInput, cfg: GuardConfig): Promise<ToolVerdict> {
+export async function guardTool(input: HookInput, cfg: GuardConfig, options: { codexDir?: string } = {}): Promise<ToolVerdict> {
   if (!cfg.enabled || !cfg.enforceExecutors) return {};
-  const transcript = await resolveTranscript(input);
+  // Codex runs this hook for every subagent in the project; only agent-flow executors are budgeted.
+  if (input.agent_type && !isExecutorAgentType(input.agent_type)) return {};
+  const transcript = await resolveTranscript(input, options);
   // Only enforce when we positively identified the executor's own transcript.
   if (!transcript?.subagent) return {};
   if (isHandoffWrite(input)) return {};

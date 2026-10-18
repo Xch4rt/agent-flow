@@ -26,17 +26,18 @@ export async function runBenchPrepare(taskDir: string, options: { variant: strin
   console.log(keyValue('Workspace:', run.workspace));
   if (run.setup) console.log(keyValue('Setup:', run.setup));
   console.log(section('Now:'));
-  console.log(`  1) ${pc.cyan(`cd ${run.workspace} && claude`)}`);
+  console.log(`  1) ${pc.cyan(`cd ${run.workspace} && claude`)}  ${pc.dim('(or `codex`, then finish with --agent codex)')}`);
   console.log(`  2) run the "${run.variant}" workflow on this prompt (${path.relative(process.cwd(), spec.prompt) || spec.prompt}) — same model for every variant`);
-  console.log(`  3) when the agent is done, exit Claude and from a normal terminal run: ${pc.cyan(`agent-flow bench finish ${runDir}`)}`);
+  console.log(`  3) when the agent is done, exit the agent and from a normal terminal run: ${pc.cyan(`agent-flow bench finish ${runDir}`)}`);
   console.log(pc.dim('Hidden acceptance tests are copied in only at finish; the agent never sees them.'));
-  console.log(pc.dim('Do not run finish from a Claude session inside the workspace: that session\'s tokens would be counted for the variant.'));
+  console.log(pc.dim('Do not run finish from an agent session inside the workspace: that session\'s tokens would be counted for the variant.'));
 }
 
-export async function runBenchFinish(runDir: string, options: { json?: boolean; force?: boolean } = {}): Promise<void> {
+export async function runBenchFinish(runDir: string, options: { json?: boolean; force?: boolean; agent?: string } = {}): Promise<void> {
   let result;
+  const agent = options.agent?.toLowerCase() === 'codex' ? 'codex' : 'claude';
   try {
-    result = await finishBenchRun(runDir, { force: options.force });
+    result = await finishBenchRun(runDir, { force: options.force, agent });
   } catch (error) {
     console.log(`${statusLabel('fail')} ${error instanceof Error ? error.message : String(error)}`);
     process.exitCode = 1;
@@ -52,7 +53,7 @@ export async function runBenchFinish(runDir: string, options: { json?: boolean; 
   if (!result.passed) console.log(keyValue('Log:', result.check.logPath));
   const u = result.usage;
   console.log(keyValue('Tokens:', `≈${u.inputEq.toLocaleString()} input-eq · cache read ${u.totals.cacheRead.toLocaleString()} · peak context ${u.peakContext.toLocaleString()} · ${u.sessions} session(s)`));
-  if (u.sessions === 0) console.log(pc.yellow('No Claude Code transcripts found for this workspace — was the agent started inside it?'));
+  if (u.sessions === 0) console.log(pc.yellow(`No ${agent === 'codex' ? 'Codex rollouts' : 'Claude Code transcripts'} found for this workspace — was the agent started inside it?${agent === 'claude' ? ' (Codex run? add --agent codex)' : ''}`));
   if (u.sessions > 1) console.log(pc.yellow(`${u.sessions} sessions were recorded in this workspace — if any was not the variant's own work (e.g. a session that ran finish), discard this run and re-run it cleanly.`));
   console.log(`Report: ${pc.cyan('agent-flow bench report')}`);
 }

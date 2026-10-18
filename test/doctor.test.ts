@@ -23,14 +23,16 @@ afterEach(async () => {
 });
 
 describe('doctor checks', () => {
-  it('covers all six Codex skills', () => {
+  it('covers all eight Codex skills in .agents/skills', () => {
     expect(codexSkillFiles).toEqual([
-      '.codex/skills/flow-onboard/SKILL.md',
-      '.codex/skills/flow-resume/SKILL.md',
-      '.codex/skills/flow-quick/SKILL.md',
-      '.codex/skills/flow-plan/SKILL.md',
-      '.codex/skills/flow-verify/SKILL.md',
-      '.codex/skills/flow-close/SKILL.md',
+      '.agents/skills/flow-onboard/SKILL.md',
+      '.agents/skills/flow-resume/SKILL.md',
+      '.agents/skills/flow-quick/SKILL.md',
+      '.agents/skills/flow-plan/SKILL.md',
+      '.agents/skills/flow-harden/SKILL.md',
+      '.agents/skills/flow-orchestrate/SKILL.md',
+      '.agents/skills/flow-verify/SKILL.md',
+      '.agents/skills/flow-close/SKILL.md',
     ]);
   });
 
@@ -60,7 +62,10 @@ describe('doctor checks', () => {
     expect(output).toContain('.agent-flow/config.json');
     expect(output).toContain('.planning/PROJECT.md');
     expect(output).toContain('.memory/events.jsonl');
-    expect(output).toContain('.codex/skills/flow-close/SKILL.md');
+    expect(output).toContain('.agents/skills/flow-close/SKILL.md');
+    expect(output).toContain('.codex/agents/flow_executor.toml');
+    expect(output).toContain('ok .codex/hooks.json guard hooks');
+    expect(output).not.toContain('legacy Codex skills');
     expect(output).toContain('memory JSONL parseability');
     expect(output).toContain('memory schema validity');
     expect(output).toContain('ok onboarding generated sections');

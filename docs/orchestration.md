@@ -70,6 +70,33 @@ Quality is decided by gates and independent review; routing decides what it cost
 
 Re-run `agent-flow init --claude --force` after changing models so the agent files pick them up. Measure the effect with `agent-flow usage --since 1d`.
 
+### Codex
+
+The same loop runs in Codex (CLI ≥ 0.160 and the ChatGPT desktop app). `init --codex` installs:
+
+- the eight skills in `.agents/skills/<name>/SKILL.md` (Codex's repo skill location; each with an `agents/openai.yaml` for the desktop app), invoked as `$flow-plan`, `$flow-harden`, `$flow-orchestrate`, …;
+- custom agent roles in `.codex/agents/`: `flow_executor_light.toml`, `flow_executor.toml`, `flow_executor_deep.toml`, `flow_reviewer.toml`, `flow_hardener.toml` — each with `model`, `model_reasoning_effort` and `developer_instructions` (role names must be lowercase with underscores);
+- the guard hooks in `.codex/hooks.json`.
+
+Roles and models come from the `orchestration.codex` block (router thresholds, escalation cadence and the context budget are shared with Claude):
+
+```json
+{
+  "orchestration": {
+    "codex": {
+      "tiers": {
+        "light": { "model": "gpt-6-luna", "effort": "low" },
+        "standard": { "model": "gpt-6.1-sol", "effort": "medium" },
+        "deep": { "model": "gpt-6.1-sol", "effort": "high" }
+      },
+      "models": { "reviewer": "gpt-6.1-sol", "hardener": "gpt-6.1-sol", "escalation": "gpt-6-astra" }
+    }
+  }
+}
+```
+
+Codex efforts go up to `ultra` (`low`, `medium`, `high`, `xhigh`, `max`, `ultra`; availability depends on the model). `$flow-orchestrate` asks `agent-flow next --brief --agent codex` for the role and model, then spawns it with `spawn_agent` (`agent_type`, `model`, `reasoning_effort`, `fork_turns: none` so the executor starts from its envelope rather than inheriting the thread), and never revives a finished agent with `followup_task` for a retry. `plan show --agent codex` previews the Codex route of every pending task. Codex loads `.codex/` config, roles and hooks only for trusted projects, and each hook must be trusted once in `/hooks`; `agent-flow doctor` checks the files and flags skills left in the deprecated `.codex/skills/` location.
+
 ## Gates
 
 Gates are configured in `.agent-flow/config.json` under `orchestration.gates` and resolved from detected package scripts by default (`test`, `typecheck`, ...).

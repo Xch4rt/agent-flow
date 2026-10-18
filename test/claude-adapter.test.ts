@@ -200,7 +200,7 @@ describe('init --agent all', () => {
 
     await runInit({ agent: 'all', cwd: tmpDir });
 
-    await expect(fs.pathExists(path.join(tmpDir, '.codex/skills/flow-resume/SKILL.md'))).resolves.toBe(true);
+    await expect(fs.pathExists(path.join(tmpDir, '.agents/skills/flow-resume/SKILL.md'))).resolves.toBe(true);
     await expect(fs.pathExists(path.join(tmpDir, 'CLAUDE.md'))).resolves.toBe(true);
     await expect(fs.pathExists(path.join(tmpDir, '.claude/skills/flow-resume/SKILL.md'))).resolves.toBe(true);
 
@@ -214,7 +214,7 @@ describe('init --codex still works', () => {
   it('creates Codex files but not Claude files', async () => {
     await runInit({ codex: true, cwd: tmpDir });
 
-    await expect(fs.pathExists(path.join(tmpDir, '.codex/skills/flow-resume/SKILL.md'))).resolves.toBe(true);
+    await expect(fs.pathExists(path.join(tmpDir, '.agents/skills/flow-resume/SKILL.md'))).resolves.toBe(true);
     await expect(fs.pathExists(path.join(tmpDir, 'CLAUDE.md'))).resolves.toBe(false);
 
     const config = await fs.readJson(path.join(tmpDir, '.agent-flow/config.json'));
