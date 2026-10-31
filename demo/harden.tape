@@ -1,5 +1,5 @@
 # agent-flow — domain hardening: pitfall packs + one agent = table-stakes
-# acceptance criteria, enforced by the gates.
+# acceptance criteria, enforced by the gates and routed to a deeper tier.
 # Render: vhs demo/harden.tape   (run demo/setup-demo.sh first)
 
 Output demo/out/harden.gif
@@ -49,10 +49,15 @@ Type "agent-flow plan harden --apply --from-json hardener-output.txt"
 Enter
 Sleep 4.5s
 
-Type "agent-flow plan validate"
+Type "clear"
 Enter
-Sleep 3s
 
-Type "# Hardened. Now the gates and the tier-1 review enforce every criterion."
+Type "agent-flow plan validate && agent-flow plan show"
 Enter
 Sleep 4s
+
+Type "# Clean — and the router saw the new criteria: both tasks now run on the deep tier."
+Enter
+Type "# The gates and the tier-1 review enforce every criterion from here."
+Enter
+Sleep 4.5s

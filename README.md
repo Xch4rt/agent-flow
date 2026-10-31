@@ -9,7 +9,8 @@ Local workflow, memory and token discipline for AI coding agents — Claude Code
 ```sh
 npm install -g @xch4rt/agent-flow
 agent-flow init              # asks: Codex, Claude Code or both (or pass --codex / --claude / --agent all)
-agent-flow doctor --tokens   # token hygiene for this project
+agent-flow onboard           # deterministic baseline of the repo → .planning/ + .memory/ (the skills resume from it)
+agent-flow doctor            # files, hooks, onboarding — add --tokens for token hygiene
 ```
 
 Then, inside Claude Code (`/flow-*`) or Codex (`$flow-*`):
@@ -58,11 +59,14 @@ agent-flow plan show                  # progress + each task's routed tier
 ```sh
 agent-flow next                 # next task + acceptance + gates + scoped context pack
 # ... your agent implements ...
-agent-flow gate --task 1.1      # run the task's gates
+agent-flow gate --task 1.1      # run the task's gates — red prints file:line failures and the executor to retry on
 agent-flow advance --task 1.1   # closes only if gates are green for the current code
+git commit ...                  # commit AFTER advance: the gate result is keyed to the working tree
 ```
 
-![the daily loop: gate, refuse, review, advance](demo/out/daily-loop.gif)
+![the daily loop: red gate, fix, refuse, review, advance, commit](demo/out/daily-loop.gif)
+
+`agent-flow` with no arguments opens the terminal dashboard; `agent-flow plan show` prints progress and each task's routed tier.
 
 Closing a phase can require an **independent review** (tier 1): `review emit --reviewer` prints a spawn-ready prompt; `review record --from-json -` ingests the reviewer's JSON verdict. Scope-disjoint tasks fan out in parallel with `next --wave` (tier 2).
 
@@ -75,6 +79,8 @@ agent-flow plan harden | <one agent> | agent-flow plan harden --apply --from-jso
 
 ![domain hardening: packs flag the gaps, one agent fills them](demo/out/harden.gif)
 
+Hardening criteria feed the router too: `plan show` after a hardening pass typically moves the affected tasks to the deep tier.
+
 ## Skills and agents
 
 Installed by `agent-flow init --claude` (`.claude/`) and `init --codex` (`.agents/skills/` + `.codex/`):
@@ -86,7 +92,7 @@ Installed by `agent-flow init --claude` (`.claude/`) and `init --codex` (`.agent
 | `/flow-orchestrate` | Drive the loop: next → implement → gate → review → advance |
 | `/flow-quick` | Small scoped change, minimal diff |
 | `/flow-verify` | Inspect the diff, run checks, catch scope creep before handoff |
-| `/flow-onboard` / `/flow-resume` / `/flow-close` | First contact, session start, session end |
+| `/flow-onboard` / `/flow-resume` / `/flow-close` | First contact (on top of `agent-flow onboard` — resume refuses until it has run), session start, session end |
 
 Both runtimes get the same role agents with explicit model and effort — executors per tier, a reviewer and a hardener — and the session guard hooks, merged without touching your settings:
 
@@ -118,7 +124,7 @@ If `npm install -g` fails with `EACCES`, install Node with a version manager (nv
 
 ## Status
 
-Current (v0.10.x): Claude Code and Codex at parity — the full loop as skills in both, role agents with explicit models, session guard hooks, observed usage from transcripts and rollouts — on top of token-aware orchestration (thin dispatcher, deterministic router, tiered executors, escalation by evidence), compact tool output, benchmarks, the orchestration loop (plan/next/gate/advance, tiered reviews, wave fan-out, smoke gate), domain hardening, deterministic onboarding, indexed context packs and the terminal dashboard.
+Current (v0.10.x): Claude Code and Codex at parity — the full loop as skills in both, role agents with explicit models, session guard hooks, observed usage from transcripts and rollouts — on top of token-aware orchestration (thin dispatcher, deterministic router, tiered executors, escalation by evidence), compact tool output, benchmarks, the orchestration loop (plan/next/gate/advance, tiered reviews, wave fan-out, smoke gate), domain hardening, deterministic onboarding (`agent-flow onboard`), indexed context packs and the terminal dashboard (`agent-flow` with no arguments).
 
 Roadmap: published bench results vs GSD (both runtimes) · more bench tasks · symbol maps in task envelopes · more pitfall packs (frontend/XSS, SQL, CLI, concurrency).
 
