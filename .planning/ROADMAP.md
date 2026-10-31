@@ -3,9 +3,9 @@
 > Generated from `.agent-flow/plan.json` by `agent-flow plan render`. Edit the plan, not this file.
 
 **Milestone:** v0.11 — evidence and tuning
-**Progress:** 1/11 tasks (9%), 0/4 phases
+**Progress:** 2/11 tasks (18%), 1/4 phases
 
-## Phase 1: Dogfood: agent-flow runs on itself — active
+## Phase 1: Dogfood: agent-flow runs on itself — done
 **Goal:** The repo is planned, remembered and gated with its own loop; the first friction found is fixed.
 **Requirements:** DOG-01, DOG-02
 
@@ -14,7 +14,7 @@
   - A2 [manual]: REQUIREMENTS.md carries the v0.11 ids and plan validate has no warnings
   - A3 [manual]: Friction found during setup is recorded in .memory/events.jsonl (tag dogfood)
   - A4 [manual]: .claude/settings.local.json is ignored and not committed
-- [ ] 1.2 (wave 2) init: honest .gitignore label and ignore Claude Code local settings — pending
+- [x] 1.2 (wave 2) init: honest .gitignore label and ignore Claude Code local settings — done
   - A1 [test]: ensureGitignore reports 'appended' (new status) when it only adds entries, 'skipped' when none are missing; never 'overwritten'
   - A2 [test]: init --claude adds .claude/settings.local.json to .gitignore alongside the scratch entries
   - A3 [test]: doctor --tokens '.gitignore covers agent-flow scratch' check accepts the new entry set

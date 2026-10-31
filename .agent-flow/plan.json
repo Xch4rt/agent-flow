@@ -1,10 +1,11 @@
 {
   "schemaVersion": 1,
-  "milestone": "v0.11 \u2014 evidence and tuning",
+  "milestone": "v0.11 — evidence and tuning",
   "createdAt": "2026-10-31T22:57:20.769Z",
+  "updatedAt": "2026-10-31T23:10:02.599Z",
   "cursor": {
-    "phase": "1",
-    "task": "1.2"
+    "phase": "2",
+    "task": "2.1"
   },
   "phases": [
     {
@@ -16,7 +17,7 @@
         "DOG-02"
       ],
       "dependsOn": [],
-      "status": "active",
+      "status": "done",
       "tasks": [
         {
           "id": "1.1",
@@ -61,7 +62,10 @@
               "proof": "manual"
             }
           ],
-          "waives": [],
+          "waives": [
+            "auth-secrets",
+            "randomness"
+          ],
           "tier": "light"
         },
         {
@@ -77,7 +81,7 @@
           "dependsOn": [
             "1.1"
           ],
-          "status": "pending",
+          "status": "done",
           "gates": [
             "test",
             "typecheck"
@@ -99,7 +103,10 @@
               "proof": "test"
             }
           ],
-          "waives": [],
+          "waives": [
+            "auth-secrets",
+            "randomness"
+          ],
           "tier": "light"
         }
       ]
@@ -299,8 +306,9 @@
             }
           ],
           "waives": [
-            "persistence",
             "auth-secrets",
+            "http-api",
+            "persistence",
             "randomness"
           ]
         },
@@ -464,7 +472,7 @@
           "acceptance": [
             {
               "id": "A1",
-              "text": "Three runs per task \u00d7 variant (plain, gsd, agent-flow) \u00d7 runtime (claude, codex); bench report --out docs/bench-results.md",
+              "text": "Three runs per task × variant (plain, gsd, agent-flow) × runtime (claude, codex); bench report --out docs/bench-results.md",
               "proof": "manual"
             },
             {
@@ -478,6 +486,5 @@
         }
       ]
     }
-  ],
-  "updatedAt": "2026-10-31T22:59:23.643Z"
+  ]
 }

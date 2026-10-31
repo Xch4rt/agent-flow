@@ -61,10 +61,11 @@ function printResults(root: string, results: WriteResult[]): void {
   const grouped = {
     created: results.filter((result) => result.status === 'created'),
     overwritten: results.filter((result) => result.status === 'overwritten'),
+    appended: results.filter((result) => result.status === 'appended'),
     skipped: results.filter((result) => result.status === 'skipped'),
   };
 
-  for (const status of ['created', 'overwritten', 'skipped'] as const) {
+  for (const status of ['created', 'overwritten', 'appended', 'skipped'] as const) {
     for (const result of grouped[status]) {
       const relativePath = path.relative(root, result.path);
       console.log(`${statusLabel(status)} ${relativePath}`);
