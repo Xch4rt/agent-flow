@@ -1,0 +1,4 @@
+interface:
+  display_name: "Flow Orchestrate"
+  short_description: "Run the loop: next → executor → gate → review → advance"
+  default_prompt: "Use $flow-orchestrate to make progress on the plan."

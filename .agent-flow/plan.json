@@ -1,0 +1,490 @@
+{
+  "schemaVersion": 1,
+  "milestone": "v0.11 — evidence and tuning",
+  "createdAt": "2026-10-31T22:57:20.769Z",
+  "updatedAt": "2026-10-31T23:10:02.599Z",
+  "cursor": {
+    "phase": "2",
+    "task": "2.1"
+  },
+  "phases": [
+    {
+      "id": "1",
+      "title": "Dogfood: agent-flow runs on itself",
+      "goal": "The repo is planned, remembered and gated with its own loop; the first friction found is fixed.",
+      "requirements": [
+        "DOG-01",
+        "DOG-02"
+      ],
+      "dependsOn": [],
+      "status": "done",
+      "tasks": [
+        {
+          "id": "1.1",
+          "title": "Commit the agent-flow setup for this repo",
+          "scope": [
+            ".agent-flow/config.json",
+            ".planning/",
+            ".memory/",
+            "CLAUDE.md",
+            "AGENTS.md",
+            ".gitignore",
+            ".claude/",
+            ".agents/",
+            ".codex/"
+          ],
+          "wave": 1,
+          "dependsOn": [],
+          "status": "done",
+          "gates": [
+            "test",
+            "typecheck"
+          ],
+          "acceptance": [
+            {
+              "id": "A1",
+              "text": "agent-flow doctor and doctor --tokens are green for this repo",
+              "proof": "manual"
+            },
+            {
+              "id": "A2",
+              "text": "REQUIREMENTS.md carries the v0.11 ids and plan validate has no warnings",
+              "proof": "manual"
+            },
+            {
+              "id": "A3",
+              "text": "Friction found during setup is recorded in .memory/events.jsonl (tag dogfood)",
+              "proof": "manual"
+            },
+            {
+              "id": "A4",
+              "text": ".claude/settings.local.json is ignored and not committed",
+              "proof": "manual"
+            }
+          ],
+          "waives": [
+            "auth-secrets",
+            "randomness"
+          ],
+          "tier": "light"
+        },
+        {
+          "id": "1.2",
+          "title": "init: honest .gitignore label and ignore Claude Code local settings",
+          "scope": [
+            "src/core/claude-settings.ts",
+            "src/commands/init.ts",
+            "test/init.test.ts",
+            "test/claude-adapter.test.ts"
+          ],
+          "wave": 2,
+          "dependsOn": [
+            "1.1"
+          ],
+          "status": "done",
+          "gates": [
+            "test",
+            "typecheck"
+          ],
+          "acceptance": [
+            {
+              "id": "A1",
+              "text": "ensureGitignore reports 'appended' (new status) when it only adds entries, 'skipped' when none are missing; never 'overwritten'",
+              "proof": "test"
+            },
+            {
+              "id": "A2",
+              "text": "init --claude adds .claude/settings.local.json to .gitignore alongside the scratch entries",
+              "proof": "test"
+            },
+            {
+              "id": "A3",
+              "text": "doctor --tokens '.gitignore covers agent-flow scratch' check accepts the new entry set",
+              "proof": "test"
+            }
+          ],
+          "waives": [
+            "auth-secrets",
+            "randomness"
+          ],
+          "tier": "light"
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "title": "Project detection beyond five frameworks",
+      "goal": "onboard, AGENTS.md and context packs describe plain Node/TS, Python, Go, Rust and monorepo projects correctly.",
+      "requirements": [
+        "DETECT-01",
+        "DETECT-02",
+        "DETECT-03"
+      ],
+      "dependsOn": [
+        "1"
+      ],
+      "status": "pending",
+      "tasks": [
+        {
+          "id": "2.1",
+          "title": "Detect plain Node/TypeScript projects, test runners, lint and typecheck",
+          "scope": [
+            "src/core/detect-project.ts",
+            "test/detect-project.test.ts",
+            "test/onboard.test.ts"
+          ],
+          "wave": 1,
+          "dependsOn": [],
+          "status": "pending",
+          "gates": [
+            "test",
+            "typecheck"
+          ],
+          "acceptance": [
+            {
+              "id": "A1",
+              "text": "A package.json without a known framework yields stack 'Node' (plus 'TypeScript' when tsconfig.json or typescript dep exists), never 'none'",
+              "proof": "test"
+            },
+            {
+              "id": "A2",
+              "text": "Test runner is detected from devDependencies or the test script: vitest, jest, node:test, mocha",
+              "proof": "test"
+            },
+            {
+              "id": "A3",
+              "text": "lint and typecheck commands are detected from scripts (lint, eslint, typecheck, type-check, tsc) and from eslint/tsconfig presence when no script exists",
+              "proof": "test"
+            },
+            {
+              "id": "A4",
+              "text": "Package manager falls back to packageManager field in package.json, then to npm when package.json exists without a lockfile",
+              "proof": "test"
+            },
+            {
+              "id": "A5",
+              "text": "This repo onboarded reports pnpm, Node + TypeScript, vitest, typecheck",
+              "proof": "manual"
+            }
+          ],
+          "waives": []
+        },
+        {
+          "id": "2.2",
+          "title": "Detect Python, Go and Rust projects with their commands",
+          "scope": [
+            "src/core/detect-project.ts",
+            "test/detect-project.test.ts",
+            "test/fixtures/"
+          ],
+          "wave": 2,
+          "dependsOn": [
+            "2.1"
+          ],
+          "status": "pending",
+          "gates": [
+            "test",
+            "typecheck"
+          ],
+          "acceptance": [
+            {
+              "id": "A1",
+              "text": "pyproject.toml / requirements.txt yields stack Python with test (pytest), lint (ruff/flake8 when configured) and the detected package manager (uv, poetry, pip)",
+              "proof": "test"
+            },
+            {
+              "id": "A2",
+              "text": "go.mod yields stack Go with go test ./..., go vet ./..., go build ./...",
+              "proof": "test"
+            },
+            {
+              "id": "A3",
+              "text": "Cargo.toml yields stack Rust with cargo test, cargo clippy, cargo build",
+              "proof": "test"
+            },
+            {
+              "id": "A4",
+              "text": "Gate resolution uses the detected commands when config has none for a gate name",
+              "proof": "test"
+            }
+          ],
+          "waives": []
+        },
+        {
+          "id": "2.3",
+          "title": "List monorepo workspaces as packages with their own commands",
+          "scope": [
+            "src/core/detect-project.ts",
+            "src/core/onboard.ts",
+            "src/core/templates.ts",
+            "src/core/context-pack.ts",
+            "test/detect-project.test.ts",
+            "test/onboard.test.ts",
+            "test/context.test.ts"
+          ],
+          "wave": 3,
+          "dependsOn": [
+            "2.2"
+          ],
+          "status": "pending",
+          "gates": [
+            "test",
+            "typecheck"
+          ],
+          "acceptance": [
+            {
+              "id": "A1",
+              "text": "pnpm-workspace.yaml, package.json workspaces and turbo.json are recognized; each package is listed with name, path and its own test/build/lint/typecheck commands",
+              "proof": "test"
+            },
+            {
+              "id": "A2",
+              "text": "PROJECT.md and AGENTS.md generated sections include a Workspaces table when packages exist",
+              "proof": "test"
+            },
+            {
+              "id": "A3",
+              "text": "A context pack for a task whose scope lies inside one package names that package and its commands first",
+              "proof": "test"
+            }
+          ],
+          "waives": []
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "title": "Router feedback from observed usage",
+      "goal": "Judge the router from what tasks actually cost and how often they passed first time; suggest, never apply.",
+      "requirements": [
+        "ROUTER-01",
+        "ROUTER-02"
+      ],
+      "dependsOn": [
+        "1"
+      ],
+      "status": "pending",
+      "tasks": [
+        {
+          "id": "3.1",
+          "title": "agent-flow router report: per-tier outcomes from task-stats and usage",
+          "scope": [
+            "src/cli.ts",
+            "src/commands/router-report.ts",
+            "src/core/router-report.ts",
+            "src/core/models.ts",
+            "test/router-report.test.ts",
+            "docs/commands.md"
+          ],
+          "wave": 1,
+          "dependsOn": [],
+          "status": "pending",
+          "gates": [
+            "test",
+            "typecheck"
+          ],
+          "acceptance": [
+            {
+              "id": "A1",
+              "text": "task-stats.json records, per task, the tier and rung assigned at each gate run (not only counts), so outcomes can be grouped by tier",
+              "proof": "test"
+            },
+            {
+              "id": "A2",
+              "text": "router report prints, per tier: tasks routed, first-attempt green rate, escalations, median tokens per task (from usage subagent data when available, 'n/a' otherwise)",
+              "proof": "test"
+            },
+            {
+              "id": "A3",
+              "text": "--json emits the same data; --all aggregates every project usage can see",
+              "proof": "test"
+            },
+            {
+              "id": "A4",
+              "text": "A project with no gate history prints a clear 'no routed tasks yet' line and exits 0",
+              "proof": "test"
+            }
+          ],
+          "waives": [
+            "auth-secrets",
+            "http-api",
+            "persistence",
+            "randomness"
+          ]
+        },
+        {
+          "id": "3.2",
+          "title": "Verdict and threshold suggestion in the router report",
+          "scope": [
+            "src/core/router-report.ts",
+            "test/router-report.test.ts",
+            "docs/orchestration.md"
+          ],
+          "wave": 2,
+          "dependsOn": [
+            "3.1"
+          ],
+          "status": "pending",
+          "gates": [
+            "test",
+            "typecheck"
+          ],
+          "acceptance": [
+            {
+              "id": "A1",
+              "text": "Report flags 'optimistic' when more than a third of light/standard tasks escalated, 'pessimistic' when more than two thirds of deep tasks passed on the first attempt, 'balanced' otherwise; thresholds are documented",
+              "proof": "test"
+            },
+            {
+              "id": "A2",
+              "text": "The suggestion is a concrete config change (orchestration.router.thresholds values) printed as text; the command never writes config.json",
+              "proof": "test"
+            },
+            {
+              "id": "A3",
+              "text": "Verdicts need at least five routed tasks; below that the report says the sample is too small",
+              "proof": "test"
+            }
+          ],
+          "waives": [
+            "http-api",
+            "persistence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "4",
+      "title": "Published benchmark",
+      "goal": "The 24% claim becomes a reproducible table across three tasks, three workflows and both runtimes.",
+      "requirements": [
+        "BENCH-01",
+        "BENCH-02"
+      ],
+      "dependsOn": [
+        "2",
+        "3"
+      ],
+      "status": "pending",
+      "tasks": [
+        {
+          "id": "4.1",
+          "title": "Bench task: HTTP API + persistence (linklite)",
+          "scope": [
+            "bench/tasks/linklite/",
+            "test/bench-tasks.test.ts"
+          ],
+          "wave": 1,
+          "dependsOn": [],
+          "status": "pending",
+          "gates": [
+            "test"
+          ],
+          "acceptance": [
+            {
+              "id": "A1",
+              "text": "Seed repo with package.json and a failing-by-absence feature; task.md asks for POST /shorten and GET /:slug persisted to a JSON file",
+              "proof": "manual"
+            },
+            {
+              "id": "A2",
+              "text": "Hidden tests cover the happy path and the table-stakes criteria: body cap, scheme allowlist, atomic write, concurrent writes serialized, a missing data file on first boot yields an empty store, crypto-grade slugs",
+              "proof": "manual"
+            },
+            {
+              "id": "A3",
+              "text": "test/bench-tasks.test.ts validates every bench/tasks/* folder: bench.json parses, check command present, seed/ and hidden/ exist",
+              "proof": "test"
+            }
+          ],
+          "waives": []
+        },
+        {
+          "id": "4.2",
+          "title": "Bench task: CLI tool (csv-stats)",
+          "scope": [
+            "bench/tasks/csv-stats/"
+          ],
+          "wave": 1,
+          "dependsOn": [],
+          "status": "pending",
+          "gates": [
+            "test"
+          ],
+          "acceptance": [
+            {
+              "id": "A1",
+              "text": "task.md asks for a CLI that reads CSV from a file or stdin and prints per-column count/min/max/mean with --json; hidden tests exercise malformed rows, empty input, exit codes",
+              "proof": "manual"
+            },
+            {
+              "id": "A2",
+              "text": "bench.json check runs the hidden tests with node --test",
+              "proof": "manual"
+            }
+          ],
+          "waives": []
+        },
+        {
+          "id": "4.3",
+          "title": "Bench task: refactor existing code without changing behaviour",
+          "scope": [
+            "bench/tasks/refactor-orders/"
+          ],
+          "wave": 1,
+          "dependsOn": [],
+          "status": "pending",
+          "gates": [
+            "test"
+          ],
+          "acceptance": [
+            {
+              "id": "A1",
+              "text": "Seed contains a working but tangled order-pricing module with its own passing tests; task.md asks to split it into pure functions and add discount rules",
+              "proof": "manual"
+            },
+            {
+              "id": "A2",
+              "text": "Hidden tests pin existing behaviour (golden outputs) and verify the new rules",
+              "proof": "manual"
+            }
+          ],
+          "waives": []
+        },
+        {
+          "id": "4.4",
+          "title": "Run the matrix and publish docs/bench-results.md",
+          "scope": [
+            "docs/bench-results.md",
+            "README.md",
+            "bench/tasks/README.md"
+          ],
+          "wave": 2,
+          "dependsOn": [
+            "4.1",
+            "4.2",
+            "4.3"
+          ],
+          "status": "pending",
+          "gates": [
+            "test"
+          ],
+          "acceptance": [
+            {
+              "id": "A1",
+              "text": "Three runs per task × variant (plain, gsd, agent-flow) × runtime (claude, codex); bench report --out docs/bench-results.md",
+              "proof": "manual"
+            },
+            {
+              "id": "A2",
+              "text": "docs/bench-results.md states models, agent-flow version, dates and the exact commands; README links it and replaces the single-e2e 24% sentence with the table's numbers",
+              "proof": "manual"
+            }
+          ],
+          "waives": [],
+          "tier": "light"
+        }
+      ]
+    }
+  ]
+}

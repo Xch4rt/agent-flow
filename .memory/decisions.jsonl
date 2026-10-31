@@ -1,0 +1,1 @@
+{"type":"decision","summary":"Dogfood agent-flow on its own repo with both runtimes and tier-1 independent review","module":"orchestration","status":"accepted","rationale":"Friction is only felt by using the loop; tier 1 exercises the review path the README sells","createdAt":"2026-10-31T22:57:21.856Z"}

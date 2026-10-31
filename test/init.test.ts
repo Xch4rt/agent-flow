@@ -3,6 +3,7 @@ import os from 'node:os';
 import fs from 'fs-extra';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runInit } from '../src/commands/init.js';
+import { ensureGitignore, missingGitignoreEntries } from '../src/core/claude-settings.js';
 
 let tmpDir: string;
 
@@ -145,5 +146,35 @@ describe('init --codex', () => {
     await runInit({ codex: true, force: true, forceMemory: true, cwd: tmpDir });
 
     await expect(fs.readFile(path.join(tmpDir, '.memory/events.jsonl'), 'utf8')).resolves.toBe('');
+  });
+
+  it('reports .gitignore as appended (never overwritten) and skipped when nothing is missing', async () => {
+    await fs.writeFile(path.join(tmpDir, '.gitignore'), 'node_modules\n');
+    expect((await ensureGitignore(tmpDir)).status).toBe('appended');
+    expect((await ensureGitignore(tmpDir)).status).toBe('skipped');
+    await fs.remove(path.join(tmpDir, '.gitignore'));
+    expect((await ensureGitignore(tmpDir)).status).toBe('created');
+  });
+
+  it('prints the appended .gitignore line in init output', async () => {
+    await fs.ensureDir(path.join(tmpDir, '.git'));
+    await fs.writeFile(path.join(tmpDir, '.gitignore'), 'node_modules\n');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await runInit({ claude: true, cwd: tmpDir });
+      const lines = log.mock.calls.map((args) => args.map(String).join(' '));
+      expect(lines.some((line) => line.includes('appended') && line.includes('.gitignore'))).toBe(true);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('ignores .claude/settings.local.json and the doctor gitignore check accepts the entry set', async () => {
+    await fs.ensureDir(path.join(tmpDir, '.git'));
+    await runInit({ claude: true, cwd: tmpDir });
+    const gitignore = await fs.readFile(path.join(tmpDir, '.gitignore'), 'utf8');
+    expect(gitignore).toContain('.claude/settings.local.json');
+    expect(gitignore).toContain('.agent-flow/memory.db');
+    expect(await missingGitignoreEntries(tmpDir)).toEqual([]);
   });
 });

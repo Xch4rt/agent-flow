@@ -3,7 +3,7 @@ import fs from 'fs-extra';
 
 export type WriteResult = {
   path: string;
-  status: 'created' | 'overwritten' | 'skipped';
+  status: 'created' | 'overwritten' | 'appended' | 'skipped';
 };
 
 export async function writeFileSafe(

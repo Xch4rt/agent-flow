@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "packageManager": "pnpm",
+  "detectedStack": [],
+  "planningDir": ".planning",
+  "memoryDir": ".memory",
+  "adapters": {
+    "codex": true,
+    "claude": true
+  },
+  "orchestration": {
+    "gates": {
+      "test": "pnpm test",
+      "typecheck": "pnpm typecheck",
+      "build": "pnpm build"
+    },
+    "defaultGates": [
+      "test",
+      "typecheck"
+    ],
+    "strictGates": false,
+    "review": {
+      "tier": 1
+    },
+    "router": {
+      "enabled": true,
+      "thresholds": {
+        "standard": 2,
+        "deep": 5
+      }
+    },
+    "tiers": {
+      "light": {
+        "model": "haiku",
+        "effort": "low"
+      },
+      "standard": {
+        "model": "sonnet",
+        "effort": "medium"
+      },
+      "deep": {
+        "model": "sonnet",
+        "effort": "high"
+      }
+    },
+    "models": {
+      "reviewer": "sonnet",
+      "hardener": "sonnet",
+      "escalation": "opus"
+    },
+    "codex": {
+      "tiers": {
+        "light": {
+          "model": "gpt-6-luna",
+          "effort": "low"
+        },
+        "standard": {
+          "model": "gpt-6.1-sol",
+          "effort": "medium"
+        },
+        "deep": {
+          "model": "gpt-6.1-sol",
+          "effort": "high"
+        }
+      },
+      "models": {
+        "reviewer": "gpt-6.1-sol",
+        "hardener": "gpt-6.1-sol",
+        "escalation": "gpt-6-astra"
+      }
+    },
+    "escalateAfterFailures": 2,
+    "contextBudgetTokens": 150000
+  }
+}

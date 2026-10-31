@@ -1,0 +1,4 @@
+interface:
+  display_name: "Flow Plan"
+  short_description: "Break work into phases/tasks with acceptance criteria"
+  default_prompt: "Use $flow-plan to plan this feature: "

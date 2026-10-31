@@ -2,3 +2,18 @@ node_modules
 dist
 coverage
 .DS_Store
+
+# agent-flow scratch (generated)
+.agent-flow/memory.db
+.agent-flow/logs/
+.agent-flow/handoffs/
+.agent-flow/review-*.prompt.md
+.agent-flow/review-*.verdict.json
+.agent-flow/harden.*
+.agent-flow/task-stats.json
+.agent-flow/gate-cache.json
+.agent-flow/guard-state.json
+.agent-flow/bench/
+
+# Claude Code local permissions
+.claude/settings.local.json

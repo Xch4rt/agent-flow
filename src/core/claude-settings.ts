@@ -52,6 +52,7 @@ export async function guardHookInstalled(root: string): Promise<boolean> {
 }
 
 export const GITIGNORE_ENTRIES = [
+  '.claude/settings.local.json',
   '.agent-flow/memory.db',
   '.agent-flow/logs/',
   '.agent-flow/handoffs/',
@@ -74,7 +75,7 @@ export async function ensureGitignore(root: string): Promise<WriteResult> {
   if (missing.length === 0) return { path: file, status: 'skipped' };
   const block = `${content && !content.endsWith('\n') ? '\n' : ''}${content ? '\n' : ''}# agent-flow scratch (generated)\n${missing.join('\n')}\n`;
   await fs.writeFile(file, content + block);
-  return { path: file, status: exists ? 'overwritten' : 'created' };
+  return { path: file, status: exists ? 'appended' : 'created' };
 }
 
 export async function missingGitignoreEntries(root: string): Promise<string[]> {

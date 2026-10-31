@@ -1,0 +1,4 @@
+interface:
+  display_name: "Flow Harden"
+  short_description: "Turn domain pitfalls into enforceable acceptance criteria"
+  default_prompt: "Use $flow-harden on the current plan before we execute it."
