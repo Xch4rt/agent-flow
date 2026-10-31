@@ -1,10 +1,7 @@
 import pc from 'picocolors';
 
 export function brandTitle(label: string): string {
-  return [
-    `${pc.cyan(pc.bold(label))} ${pc.dim('▣')}`,
-    pc.dim('voxel workflow agent / memory / context'),
-  ].join('\n');
+  return `${pc.cyan(pc.bold(label))} ${pc.dim('▣')}`;
 }
 
 export function section(label: string): string {

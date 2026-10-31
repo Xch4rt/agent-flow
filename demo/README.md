@@ -12,26 +12,26 @@ vhs demo/harden.tape
 vhs demo/daily-loop.tape
 ```
 
-Re-run `setup-demo.sh` before re-recording `daily-loop.tape` or `harden.tape` — those tapes mutate their fixture state (that's the point: the gates are real).
+Re-run `setup-demo.sh` before re-recording any tape — all three mutate their fixture state (that's the point: the gates are real). Fixtures live in `/tmp/afdemo-quickstart`, `/tmp/afdemo-harden`, `/tmp/afdemo-loop` (plus `/tmp/afdemo-loop-fix`, the executor's fix the loop tape copies in after the red gate). The quickstart chooser answers `2` (Claude Code); the "Detected on this machine" line depends on the recording machine.
 
 ## The three videos
 
 | Tape | Story (≈60s each) |
 |---|---|
-| `quickstart.tape` | Zero to validated plan: `init --claude` → declare requirements → `plan init --scaffold` → `plan validate`. |
-| `harden.tape` | A naive plan ships naive code. Pitfall packs flag the gaps for free; one hardening agent turns them into acceptance criteria; `validate` comes back clean. |
-| `daily-loop.tape` | The hard gate at work: gates green, but `advance` refuses to close the phase without an independent review. Emit the reviewer prompt, record its JSON verdict, phase closes. |
+| `quickstart.tape` | A small Express project, zero to validated plan: `init` (runtime chooser) → `onboard` → `doctor --tokens` → declare requirements → `plan init --scaffold` → `plan validate` → `plan show` with routed tiers. |
+| `harden.tape` | A naive plan ships naive code. Pitfall packs flag the gaps for free; one hardening agent turns them into acceptance criteria; `validate` comes back clean and `plan show` routes both tasks to the deep tier. |
+| `daily-loop.tape` | The hard gate at work: `next --brief` dispatches, the executor's first attempt fails the gate for real (`Math.random`), the fix lands, gates green, but `advance` refuses to close the phase without an independent review. Emit the reviewer prompt, record its JSON verdict, phase closes, commit after `advance`. |
 
 ## Voiceover scripts (for narrated versions)
 
 **Quickstart (ES):**
-> "Esto es agent-flow. Un comando instala los skills de Claude Code y la estructura de planning. Declaras qué debe hacer tu proyecto con requirement IDs, y el plan se siembra solo desde ahí. `plan validate` revisa estructura, cobertura y hardening de dominio — todo determinista, cero tokens. De aquí, `/flow-orchestrate` ejecuta el loop."
+> "Esto es agent-flow. `init` pregunta qué runtime usas e instala skills, agentes con modelo explícito y el guard hook. `onboard` lee el repo y escribe la base de planning y memoria sin gastar un token. `doctor --tokens` revisa la higiene: instrucciones siempre cargadas, hooks, agentes. Declaras qué debe hacer tu proyecto con requirement IDs, el plan se siembra desde ahí, y `plan show` ya muestra a qué tier va cada tarea. De aquí, `/flow-orchestrate` ejecuta el loop."
 
 **Hardening (ES):**
-> "Un plan escrito sin conocimiento del dominio embarca código sin endurecer. Los pitfall packs de agent-flow detectan eso gratis: body caps, escrituras atómicas, cache headers, randomness criptográfica. Un solo agente convierte los gaps en acceptance criteria — doce mil tokens, no quinientos mil — y los gates los hacen cumplir. En nuestro benchmark, esto igualó la calidad de un pipeline de research completo al 24% de su costo."
+> "Un plan escrito sin conocimiento del dominio embarca código sin endurecer. Los pitfall packs de agent-flow detectan eso gratis: body caps, escrituras atómicas, cache headers, randomness criptográfica. Un solo agente convierte los gaps en acceptance criteria — doce mil tokens, no quinientos mil — y el router, al ver esos criterios, sube las tareas al tier profundo. Los gates los hacen cumplir. En nuestro benchmark, esto igualó la calidad de un pipeline de research completo al 24% de su costo."
 
 **Daily loop (ES):**
-> "Tu agente dice que terminó. ¿Le crees? agent-flow no. `advance` se niega a cerrar trabajo cuyos gates no estén verdes para el código exacto actual — y una fase no cierra sin el veredicto de un reviewer independiente que lee el código de verdad. Emites el prompt, el reviewer responde en JSON, lo registras, y solo entonces la fase cierra. The gates are the gates."
+> "El orquestador pide la siguiente tarea y el router elige qué ejecutor la toma, sin gastar tokens. El ejecutor dice que terminó. ¿Le crees? agent-flow no: el gate falla de verdad, con archivo y línea, y dice quién reintenta. Llega el fix, el gate pasa, pero `advance` se niega a cerrar la fase sin el veredicto de un reviewer independiente que lee el código. Emites el prompt, el reviewer responde en JSON, lo registras, la fase cierra, y solo entonces haces commit. The gates are the gates."
 
 ## Conventions
 
