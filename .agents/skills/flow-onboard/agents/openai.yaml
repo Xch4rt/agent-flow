@@ -1,0 +1,4 @@
+interface:
+  display_name: "Flow Onboard"
+  short_description: "First contact with a repo: fill the planning files"
+  default_prompt: "Use $flow-onboard to inspect this repository and populate the agent-flow planning files."

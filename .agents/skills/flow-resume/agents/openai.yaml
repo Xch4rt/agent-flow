@@ -1,0 +1,4 @@
+interface:
+  display_name: "Flow Resume"
+  short_description: "Resume a session from state, memory and decisions"
+  default_prompt: "Use $flow-resume to brief me on the current state before we continue."

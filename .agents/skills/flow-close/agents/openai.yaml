@@ -1,0 +1,4 @@
+interface:
+  display_name: "Flow Close"
+  short_description: "Record durable memory at the end of a session"
+  default_prompt: "Use $flow-close to record what future sessions need to know."

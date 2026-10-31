@@ -1,0 +1,4 @@
+interface:
+  display_name: "Flow Quick"
+  short_description: "Small scoped change, minimal diff"
+  default_prompt: "Use $flow-quick for this small change: "

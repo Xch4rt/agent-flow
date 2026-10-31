@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v agent-flow >/dev/null 2>&1 && agent-flow guard prompt || true",
+            "statusMessage": "agent-flow guard",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v agent-flow >/dev/null 2>&1 && agent-flow guard tool || true",
+            "statusMessage": "agent-flow guard",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

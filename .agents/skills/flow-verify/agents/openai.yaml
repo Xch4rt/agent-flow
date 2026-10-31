@@ -1,0 +1,4 @@
+interface:
+  display_name: "Flow Verify"
+  short_description: "Inspect the diff, run checks, catch scope creep"
+  default_prompt: "Use $flow-verify on the current changes before handoff."
