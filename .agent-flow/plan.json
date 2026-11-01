@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "milestone": "v0.11 \u2014 evidence and tuning",
+  "milestone": "v0.11 — evidence and tuning",
   "createdAt": "2026-10-31T22:57:20.769Z",
-  "updatedAt": "2026-11-01T02:17:27.352Z",
+  "updatedAt": "2026-11-01T02:19:02.024Z",
   "cursor": {
     "phase": "2",
-    "task": "2.2"
+    "task": "2.3"
   },
   "phases": [
     {
@@ -181,7 +181,7 @@
           "dependsOn": [
             "2.1"
           ],
-          "status": "pending",
+          "status": "done",
           "gates": [
             "test",
             "typecheck"
@@ -477,7 +477,7 @@
           "acceptance": [
             {
               "id": "A1",
-              "text": "Three runs per task \u00d7 variant (plain, gsd, agent-flow) \u00d7 runtime (claude, codex); bench report --out docs/bench-results.md",
+              "text": "Three runs per task × variant (plain, gsd, agent-flow) × runtime (claude, codex); bench report --out docs/bench-results.md",
               "proof": "manual"
             },
             {

@@ -2,6 +2,7 @@ import path from 'node:path';
 import os from 'node:os';
 import fs from 'fs-extra';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { resolveGateCommands } from '../src/core/gates.js';
 import { detectProject } from '../src/core/detect-project.js';
 
 let tmpDir: string;
@@ -149,5 +150,70 @@ describe('project detection', () => {
     expect((await detectProject(tmpDir)).packageManager).toBe('pnpm');
     await writeRaw({ name: 'x' });
     expect((await detectProject(tmpDir)).packageManager).toBe('npm');
+  });
+});
+
+describe('non-Node language detection', () => {
+  it('detects Python with uv, pytest and ruff', async () => {
+    await fs.writeFile(
+      path.join(tmpDir, 'pyproject.toml'),
+      '[project]\nname="x"\n[tool.ruff]\nline-length=100\n[dependency-groups]\ndev=["pytest"]\n',
+    );
+    await fs.writeFile(path.join(tmpDir, 'uv.lock'), '');
+    const d = await detectProject(tmpDir);
+    expect(d.stacks).toContain('Python');
+    expect(d.packageManager).toBe('uv');
+    expect(d.commands.test).toBe('uv run pytest');
+    expect(d.commands.lint).toBe('uv run ruff check .');
+  });
+
+  it('detects Python with poetry and flake8', async () => {
+    await fs.writeFile(
+      path.join(tmpDir, 'pyproject.toml'),
+      '[tool.poetry]\nname="x"\n[tool.poetry.dev-dependencies]\npytest="*"\nflake8="*"\n',
+    );
+    const d = await detectProject(tmpDir);
+    expect(d.packageManager).toBe('poetry');
+    expect(d.commands.test).toBe('poetry run pytest');
+    expect(d.commands.lint).toBe('poetry run flake8');
+  });
+
+  it('detects Python with pip from requirements.txt', async () => {
+    await fs.writeFile(path.join(tmpDir, 'requirements.txt'), 'pytest\nruff\n');
+    const d = await detectProject(tmpDir);
+    expect(d.packageManager).toBe('pip');
+    expect(d.commands.test).toBe('pytest');
+    expect(d.commands.lint).toBe('ruff check .');
+    expect(d.commands.install).toBe('pip install -r requirements.txt');
+  });
+
+  it('detects Go', async () => {
+    await fs.writeFile(path.join(tmpDir, 'go.mod'), 'module x\n\ngo 1.22\n');
+    const d = await detectProject(tmpDir);
+    expect(d.stacks).toContain('Go');
+    expect(d.commands.test).toBe('go test ./...');
+    expect(d.commands.lint).toBe('go vet ./...');
+    expect(d.commands.build).toBe('go build ./...');
+  });
+
+  it('detects Rust', async () => {
+    await fs.writeFile(path.join(tmpDir, 'Cargo.toml'), '[package]\nname="x"\n');
+    const d = await detectProject(tmpDir);
+    expect(d.stacks).toContain('Rust');
+    expect(d.commands.test).toBe('cargo test');
+    expect(d.commands.lint).toBe('cargo clippy');
+    expect(d.commands.build).toBe('cargo build');
+  });
+
+  it('gate resolution falls back to detected commands for Go and Rust', async () => {
+    await fs.writeFile(path.join(tmpDir, 'go.mod'), 'module x\n');
+    expect(await resolveGateCommands(tmpDir)).toMatchObject({
+      test: 'go test ./...',
+      lint: 'go vet ./...',
+      build: 'go build ./...',
+    });
+    await fs.remove(path.join(tmpDir, 'go.mod'));
+    await fs.writeFile(path.join(tmpDir, 'Cargo.toml'), '[package]\nname="x"\n');
+    expect(await resolveGateCommands(tmpDir)).toMatchObject({ test: 'cargo test', build: 'cargo build' });
   });
 });

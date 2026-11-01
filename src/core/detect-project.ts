@@ -2,7 +2,7 @@ import path from 'node:path';
 import fs from 'fs-extra';
 import { z } from 'zod';
 
-const PackageManagerSchema = z.enum(['pnpm', 'npm', 'yarn', 'bun', 'unknown']);
+const PackageManagerSchema = z.enum(['pnpm', 'npm', 'yarn', 'bun', 'uv', 'poetry', 'pip', 'cargo', 'go', 'unknown']);
 const StackNameSchema = z.enum([
   'Next.js',
   'NestJS',
@@ -10,6 +10,8 @@ const StackNameSchema = z.enum([
   'Fastify',
   'Prisma',
   'Python',
+  'Go',
+  'Rust',
   'Docker',
   'Node',
   'TypeScript',
@@ -164,6 +166,85 @@ function commandForScript(
   return `${runPrefix(packageManager)} ${script}`;
 }
 
+type Commands = ProjectDetection['commands'];
+type LanguageDetection = { packageManager: PackageManager; commands: Commands };
+
+async function readText(root: string, relativePath: string): Promise<string> {
+  const file = path.join(root, relativePath);
+  return (await fs.pathExists(file)) ? fs.readFile(file, 'utf8') : '';
+}
+
+async function detectPython(root: string): Promise<LanguageDetection | undefined> {
+  const hasPyproject = await exists(root, 'pyproject.toml');
+  const hasRequirements = await exists(root, 'requirements.txt');
+  const hasPipfile = await exists(root, 'Pipfile');
+  const hasPoetryLock = await exists(root, 'poetry.lock');
+  if (!hasPyproject && !hasRequirements && !hasPipfile && !hasPoetryLock) return undefined;
+
+  const pyproject = await readText(root, 'pyproject.toml');
+  const requirements = await readText(root, 'requirements.txt');
+  const hasUvLock = await exists(root, 'uv.lock');
+  const isPoetry = hasPoetryLock || /^\[tool\.poetry\b/m.test(pyproject);
+  const isUv = hasUvLock || /^\[tool\.uv\b/m.test(pyproject);
+  const packageManager: PackageManager = isUv ? 'uv' : isPoetry ? 'poetry' : 'pip';
+  const run = packageManager === 'uv' ? 'uv run ' : packageManager === 'poetry' ? 'poetry run ' : '';
+
+  const mentions = (name: string): boolean =>
+    new RegExp(`\\b${name}\\b`, 'i').test(pyproject) ||
+    new RegExp(`^\\s*${name}\\b`, 'im').test(requirements);
+  const hasPytest =
+    mentions('pytest') ||
+    (await exists(root, 'pytest.ini')) ||
+    (await exists(root, 'conftest.py')) ||
+    (await exists(root, 'tests'));
+  const hasRuff = mentions('ruff') || (await exists(root, 'ruff.toml')) || (await exists(root, '.ruff.toml'));
+  const hasFlake8 = mentions('flake8') || (await exists(root, '.flake8'));
+
+  const install =
+    packageManager === 'uv'
+      ? 'uv sync'
+      : packageManager === 'poetry'
+        ? 'poetry install'
+        : hasRequirements
+          ? 'pip install -r requirements.txt'
+          : 'pip install -e .';
+
+  return {
+    packageManager,
+    commands: {
+      install,
+      ...(hasPytest ? { test: `${run}pytest` } : {}),
+      ...(hasRuff ? { lint: `${run}ruff check .` } : hasFlake8 ? { lint: `${run}flake8` } : {}),
+    },
+  };
+}
+
+async function detectGo(root: string): Promise<LanguageDetection | undefined> {
+  if (!(await exists(root, 'go.mod'))) return undefined;
+  return {
+    packageManager: 'go',
+    commands: {
+      install: 'go mod download',
+      build: 'go build ./...',
+      test: 'go test ./...',
+      lint: 'go vet ./...',
+    },
+  };
+}
+
+async function detectRust(root: string): Promise<LanguageDetection | undefined> {
+  if (!(await exists(root, 'Cargo.toml'))) return undefined;
+  return {
+    packageManager: 'cargo',
+    commands: {
+      install: 'cargo fetch',
+      build: 'cargo build',
+      test: 'cargo test',
+      lint: 'cargo clippy',
+    },
+  };
+}
+
 export async function detectProject(root = process.cwd()): Promise<ProjectDetection> {
   const packageJson = await readPackageJson(root);
   const scripts = detectScripts(packageJson);
@@ -201,6 +282,13 @@ export async function detectProject(root = process.cwd()): Promise<ProjectDetect
   ) {
     stacks.add('Python');
   }
+  if (await exists(root, 'go.mod')) stacks.add('Go');
+  if (await exists(root, 'Cargo.toml')) stacks.add('Rust');
+
+  // Non-Node language detection only applies when there is no package.json.
+  const language = packageJson
+    ? undefined
+    : ((await detectGo(root)) ?? (await detectRust(root)) ?? (await detectPython(root)));
 
   if (
     (await exists(root, 'Dockerfile')) ||
@@ -210,6 +298,16 @@ export async function detectProject(root = process.cwd()): Promise<ProjectDetect
     (await exists(root, 'compose.yaml'))
   ) {
     stacks.add('Docker');
+  }
+
+  if (language) {
+    return {
+      root,
+      packageManager: language.packageManager,
+      stacks: [...stacks],
+      scripts,
+      commands: language.commands,
+    };
   }
 
   return {
