@@ -11,15 +11,20 @@ const StackNameSchema = z.enum([
   'Prisma',
   'Python',
   'Docker',
+  'Node',
+  'TypeScript',
 ]);
+const TestRunnerSchema = z.enum(['vitest', 'jest', 'node:test', 'mocha']);
 
 export type PackageManager = z.infer<typeof PackageManagerSchema>;
 export type StackName = z.infer<typeof StackNameSchema>;
+export type TestRunner = z.infer<typeof TestRunnerSchema>;
 
 export type ProjectDetection = {
   root: string;
   packageManager: PackageManager;
   stacks: StackName[];
+  testRunner?: TestRunner;
   scripts: Record<string, string>;
   commands: {
     install?: string;
@@ -74,12 +79,62 @@ function detectScripts(packageJson: Record<string, unknown> | undefined): Record
   );
 }
 
-async function detectPackageManager(root: string): Promise<PackageManager> {
+function allDeps(packageJson: Record<string, unknown> | undefined): Record<string, unknown> {
+  return {
+    ...(typeof packageJson?.dependencies === 'object' ? packageJson.dependencies : {}),
+    ...(typeof packageJson?.devDependencies === 'object' ? packageJson.devDependencies : {}),
+  } as Record<string, unknown>;
+}
+
+function detectTestRunner(
+  packageJson: Record<string, unknown> | undefined,
+  scripts: Record<string, string>,
+): TestRunner | undefined {
+  const deps = allDeps(packageJson);
+  if ('vitest' in deps) return 'vitest';
+  if ('jest' in deps) return 'jest';
+  if ('mocha' in deps) return 'mocha';
+  const testScript = [scripts.test, scripts['test:unit']].filter(Boolean).join(' ');
+  if (/\bvitest\b/.test(testScript)) return 'vitest';
+  if (/\bjest\b/.test(testScript)) return 'jest';
+  if (/\bmocha\b/.test(testScript)) return 'mocha';
+  if (/node(\s+--\S+)*\s+--test\b|node:test/.test(testScript)) return 'node:test';
+  return undefined;
+}
+
+function execPrefix(packageManager: PackageManager): string {
+  if (packageManager === 'pnpm') return 'pnpm exec';
+  if (packageManager === 'yarn') return 'yarn';
+  if (packageManager === 'bun') return 'bunx';
+  return 'npx';
+}
+
+const ESLINT_CONFIGS = [
+  'eslint.config.js',
+  'eslint.config.mjs',
+  'eslint.config.cjs',
+  'eslint.config.ts',
+  '.eslintrc',
+  '.eslintrc.js',
+  '.eslintrc.cjs',
+  '.eslintrc.json',
+  '.eslintrc.yml',
+  '.eslintrc.yaml',
+];
+
+async function detectPackageManager(
+  root: string,
+  packageJson?: Record<string, unknown>,
+): Promise<PackageManager> {
   if (await exists(root, 'pnpm-lock.yaml')) return 'pnpm';
   if (await exists(root, 'package-lock.json')) return 'npm';
   if (await exists(root, 'yarn.lock')) return 'yarn';
   if (await exists(root, 'bun.lockb')) return 'bun';
   if (await exists(root, 'bun.lock')) return 'bun';
+  const declared = typeof packageJson?.packageManager === 'string' ? packageJson.packageManager : '';
+  const name = declared.split('@')[0];
+  if (name === 'pnpm' || name === 'npm' || name === 'yarn' || name === 'bun') return name;
+  if (packageJson) return 'npm';
   return 'unknown';
 }
 
@@ -112,8 +167,27 @@ function commandForScript(
 export async function detectProject(root = process.cwd()): Promise<ProjectDetection> {
   const packageJson = await readPackageJson(root);
   const scripts = detectScripts(packageJson);
-  const packageManager = await detectPackageManager(root);
+  const packageManager = await detectPackageManager(root, packageJson);
   const stacks = new Set<StackName>(detectStackFromPackageJson(packageJson));
+
+  const hasTsconfig = await exists(root, 'tsconfig.json');
+  const deps = allDeps(packageJson);
+  if (packageJson && stacks.size === 0) stacks.add('Node');
+  if (packageJson && (hasTsconfig || 'typescript' in deps)) stacks.add('TypeScript');
+
+  let hasEslintConfig = 'eslint' in deps;
+  for (const config of ESLINT_CONFIGS) {
+    if (!hasEslintConfig && (await exists(root, config))) hasEslintConfig = true;
+  }
+
+  const testRunner = detectTestRunner(packageJson, scripts);
+  const exec = execPrefix(packageManager);
+  const lint =
+    commandForScript(scripts, packageManager, ['lint', 'eslint']) ??
+    (hasEslintConfig ? `${exec} eslint .` : undefined);
+  const typecheck =
+    commandForScript(scripts, packageManager, ['typecheck', 'type-check', 'tsc']) ??
+    (hasTsconfig ? `${exec} tsc --noEmit` : undefined);
 
   if ((await exists(root, 'prisma/schema.prisma')) || (await exists(root, 'prisma'))) {
     stacks.add('Prisma');
@@ -142,14 +216,15 @@ export async function detectProject(root = process.cwd()): Promise<ProjectDetect
     root,
     packageManager,
     stacks: [...stacks],
+    ...(testRunner ? { testRunner } : {}),
     scripts,
     commands: {
       install: installCommand(packageManager),
       dev: commandForScript(scripts, packageManager, ['dev', 'start']),
       build: commandForScript(scripts, packageManager, ['build']),
       test: commandForScript(scripts, packageManager, ['test', 'test:unit']),
-      lint: commandForScript(scripts, packageManager, ['lint']),
-      typecheck: commandForScript(scripts, packageManager, ['typecheck', 'type-check']),
+      lint,
+      typecheck,
     },
   };
 }

@@ -93,4 +93,61 @@ describe('project detection', () => {
 
     expect(detection.stacks).toContain('Docker');
   });
+
+  async function writeRaw(pkg: Record<string, unknown>): Promise<void> {
+    await fs.writeJson(path.join(tmpDir, 'package.json'), pkg);
+  }
+
+  it('detects plain Node and TypeScript', async () => {
+    await writeRaw({ name: 'x' });
+    expect((await detectProject(tmpDir)).stacks).toEqual(['Node']);
+
+    await fs.writeFile(path.join(tmpDir, 'tsconfig.json'), '{}');
+    expect((await detectProject(tmpDir)).stacks).toEqual(['Node', 'TypeScript']);
+  });
+
+  it('detects TypeScript from the typescript dependency', async () => {
+    await writeRaw({ devDependencies: { typescript: '^5' } });
+    expect((await detectProject(tmpDir)).stacks).toEqual(['Node', 'TypeScript']);
+  });
+
+  it.each([
+    [{ devDependencies: { vitest: '1' } }, 'vitest'],
+    [{ devDependencies: { jest: '1' } }, 'jest'],
+    [{ devDependencies: { mocha: '1' } }, 'mocha'],
+    [{ scripts: { test: 'node --test test/' } }, 'node:test'],
+    [{ scripts: { test: 'vitest run' } }, 'vitest'],
+  ] as const)('detects test runner %j as %s', async (pkg, runner) => {
+    await writeRaw(pkg);
+    expect((await detectProject(tmpDir)).testRunner).toBe(runner);
+  });
+
+  it('detects lint and typecheck from alternate scripts', async () => {
+    await writeRaw({ scripts: { eslint: 'eslint .', 'type-check': 'tsc' } });
+    await fs.writeFile(path.join(tmpDir, 'package-lock.json'), '');
+    expect((await detectProject(tmpDir)).commands).toMatchObject({
+      lint: 'npm run eslint',
+      typecheck: 'npm run type-check',
+    });
+    await writeRaw({ scripts: { tsc: 'tsc --noEmit' } });
+    expect((await detectProject(tmpDir)).commands.typecheck).toBe('npm run tsc');
+  });
+
+  it('falls back to eslint and tsconfig presence without scripts', async () => {
+    await writeRaw({ name: 'x' });
+    await fs.writeFile(path.join(tmpDir, 'pnpm-lock.yaml'), '');
+    await fs.writeFile(path.join(tmpDir, 'eslint.config.js'), '');
+    await fs.writeFile(path.join(tmpDir, 'tsconfig.json'), '{}');
+    expect((await detectProject(tmpDir)).commands).toMatchObject({
+      lint: 'pnpm exec eslint .',
+      typecheck: 'pnpm exec tsc --noEmit',
+    });
+  });
+
+  it('falls back to packageManager field, then npm', async () => {
+    await writeRaw({ packageManager: 'pnpm@9.0.0' });
+    expect((await detectProject(tmpDir)).packageManager).toBe('pnpm');
+    await writeRaw({ name: 'x' });
+    expect((await detectProject(tmpDir)).packageManager).toBe('npm');
+  });
 });
