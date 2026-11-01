@@ -94,7 +94,7 @@ type TaskEnvelope = {
 async function buildTaskEnvelope(root: string, phase: Phase, task: Task, budgetLines: number, agent: AgentId): Promise<TaskEnvelope> {
   const commands = await resolveGateCommands(root);
   const gateNames = gateNamesFor(task, await getDefaultGates(root));
-  const pack = await buildContextPack(`${phase.title}: ${task.title}`, { cwd: root, limit: 5, budgetLines });
+  const pack = await buildContextPack(`${phase.title}: ${task.title}`, { cwd: root, limit: 5, budgetLines, scope: task.scope });
   const formattedPack = formatContextPack(pack, { budgetLines });
   const executor = executorAssignment(await getModelRouting(root, agent), (await readTaskStats(root))[task.id], task);
   return { phase, task, gateNames, commands, pack, formattedPack, budgetLines, executor };

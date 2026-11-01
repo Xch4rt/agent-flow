@@ -5,5 +5,5 @@
 <!-- agent-flow:onboard:start -->
 ## Agent Flow Open Questions
 
-- What is the primary application stack?
+- No generated open questions.
 <!-- agent-flow:onboard:end -->

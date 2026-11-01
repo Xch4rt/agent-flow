@@ -289,3 +289,24 @@ describe('context command', () => {
     expect(output()).not.toContain('Login session cookies rotate on refresh.');
   });
 });
+
+describe('context pack workspaces', () => {
+  it('names the package and its commands first when scope lies inside one package', async () => {
+    const { buildContextPack, formatContextPack } = await import('../src/core/context-pack.js');
+    await fs.writeFile(path.join(tmpDir, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n');
+    await fs.writeFile(path.join(tmpDir, 'pnpm-lock.yaml'), '');
+    await fs.writeJson(path.join(tmpDir, 'package.json'), { name: 'root', scripts: { test: 'vitest' } });
+    await fs.ensureDir(path.join(tmpDir, 'packages/api'));
+    await fs.writeJson(path.join(tmpDir, 'packages/api/package.json'), { name: '@acme/api', scripts: { test: 'vitest' } });
+
+    const inside = await buildContextPack('api work', { cwd: tmpDir, scope: ['packages/api/src/x.ts', 'packages/api/test/x.test.ts'] });
+    expect(inside.project.workspace?.name).toBe('@acme/api');
+    const text = formatContextPack(inside);
+    const summary = text.slice(text.indexOf('Project Summary:'));
+    expect(summary.indexOf('Package: @acme/api')).toBeLessThan(summary.indexOf('Commands:'));
+    expect(summary).toContain('pnpm --filter @acme/api test');
+
+    const across = await buildContextPack('x', { cwd: tmpDir, scope: ['packages/api/a.ts', 'README.md'] });
+    expect(across.project.workspace).toBeUndefined();
+  });
+});

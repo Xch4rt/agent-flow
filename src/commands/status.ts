@@ -77,6 +77,7 @@ export async function runStatus(options: { cwd?: string } = {}): Promise<void> {
   console.log(brandTitle('agent-flow status'));
   console.log(keyValue('Package manager:', detection.packageManager));
   console.log(keyValue('Detected stack:', detection.stacks.length ? detection.stacks.join(', ') : 'none'));
+  console.log(keyValue('Test runner:', detection.testRunner ?? 'none'));
   console.log(section('Detected commands:'));
   console.log(commandLine('install', detection.commands.install));
   console.log(commandLine('dev', detection.commands.dev));

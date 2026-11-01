@@ -19,11 +19,16 @@ pnpm
 
 ### Detected Stack
 
-- No framework or runtime stack detected.
+- Node
+- TypeScript
 
 ### Package Manager
 
 pnpm
+
+### Test Runner
+
+vitest
 
 ### Important Files
 

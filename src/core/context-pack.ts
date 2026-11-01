@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { execa } from 'execa';
 import fs from 'fs-extra';
-import { detectProject, type ProjectDetection } from './detect-project.js';
+import { detectProject, type ProjectDetection, type Workspace } from './detect-project.js';
 import { readMemoryEntries, type MemoryEntry, type MemoryFileName } from './jsonl-memory.js';
 import { queryMemoryIndex, type IndexedMemoryEntry, type MemoryDrawer } from './memory-index.js';
 
@@ -12,6 +12,8 @@ export type ContextPackOptions = {
   budgetLines?: number;
   includeEvents?: boolean;
   includeOpenQuestions?: boolean;
+  /** Task scope files; when they lie inside one workspace package, it is named first. */
+  scope?: string[];
 };
 
 export type ContextPackItem = {
@@ -33,6 +35,10 @@ export type ContextPackProject = {
   packageManager: ProjectDetection['packageManager'];
   stack: ProjectDetection['stacks'];
   commands: ProjectDetection['commands'];
+  testRunner?: ProjectDetection['testRunner'];
+  workspace?: Workspace;
+  workspaces?: Workspace[];
+  workspacesTotal?: number;
 };
 
 export type ContextPackGit = {
@@ -315,11 +321,32 @@ function verificationCommands(commands: Awaited<ReturnType<typeof detectProject>
   return detected.length > 0 ? detected : ['Inspect package scripts and project docs before choosing checks.'];
 }
 
-function projectSummary(detection: ProjectDetection): ContextPackProject {
+function scopedWorkspace(detection: ProjectDetection, scope: string[] | undefined): Workspace | undefined {
+  const workspaces = detection.workspaces ?? [];
+  if (!scope || scope.length === 0 || workspaces.length === 0) return undefined;
+  const normalized = scope.map((file) => file.replace(/^\.\//, ''));
+  const owners = new Set<Workspace | undefined>(
+    normalized.map((file) =>
+      workspaces
+        .filter((workspace) => file === workspace.path || file.startsWith(`${workspace.path}/`))
+        .sort((a, b) => b.path.length - a.path.length)[0],
+    ),
+  );
+  if (owners.size !== 1) return undefined;
+  return [...owners][0];
+}
+
+function projectSummary(detection: ProjectDetection, scope?: string[]): ContextPackProject {
+  const workspace = scopedWorkspace(detection, scope);
   return {
     packageManager: detection.packageManager,
     stack: detection.stacks,
     commands: detection.commands,
+    ...(detection.testRunner ? { testRunner: detection.testRunner } : {}),
+    ...(workspace ? { workspace } : {}),
+    ...(detection.workspaces?.length
+      ? { workspaces: detection.workspaces, workspacesTotal: detection.workspacesTotal ?? detection.workspaces.length }
+      : {}),
   };
 }
 
@@ -419,7 +446,7 @@ export async function buildContextPack(task: string, options: ContextPackOptions
   return {
     task,
     ...(module ? { module } : {}),
-    project: projectSummary(detection),
+    project: projectSummary(detection, options.scope),
     git,
     state: planningSummary(stateMd) || markdownSection(projectMd, 'Purpose') || 'No current state summary found.',
     items,
@@ -455,7 +482,7 @@ function errorItem(item: ContextPackItem): string[] {
   return lines;
 }
 
-function projectCommandSummary(commands: ContextPackProject['commands']): string {
+function projectCommandSummary(commands: Omit<ContextPackProject['commands'], 'install'> & { install?: string }): string {
   const commandLines = [
     commands.dev && `dev=${commands.dev}`,
     commands.build && `build=${commands.build}`,
@@ -470,9 +497,22 @@ function projectCommandSummary(commands: ContextPackProject['commands']): string
 function pushProjectAndGit(lines: string[], pack: ContextPack): void {
   lines.push('');
   lines.push('Project Summary:');
+  if (pack.project.workspace) {
+    const ws = pack.project.workspace;
+    lines.push(`- Package: ${ws.name} (${ws.path})`);
+    lines.push(`- Package commands: ${projectCommandSummary(ws.commands)}`);
+  }
   lines.push(`- Package manager: ${pack.project.packageManager}`);
-  lines.push(`- Stack: ${pack.project.stack.length ? pack.project.stack.join(', ') : 'none'}`);
+  lines.push(
+    `- Stack: ${pack.project.stack.length ? pack.project.stack.join(', ') : 'none'}${pack.project.testRunner ? ` (test runner: ${pack.project.testRunner})` : ''}`,
+  );
   lines.push(`- Commands: ${projectCommandSummary(pack.project.commands)}`);
+  if (pack.project.workspaces?.length && !pack.project.workspace) {
+    const more = (pack.project.workspacesTotal ?? 0) - pack.project.workspaces.length;
+    lines.push(
+      `- Workspaces: ${pack.project.workspaces.map((ws) => `${ws.name} (${ws.path})`).join(', ')}${more > 0 ? `, +${more} more` : ''}`,
+    );
+  }
 
   lines.push('');
   lines.push('Git Context:');

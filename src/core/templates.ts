@@ -5,6 +5,23 @@ function commandLine(label: string, value: string | undefined): string {
   return `- ${label}: ${value ?? 'Not detected yet'}`;
 }
 
+export function workspacesTable(detection: ProjectDetection): string {
+  const workspaces = detection.workspaces ?? [];
+  if (workspaces.length === 0) return '';
+  const cell = (value: string | undefined): string => (value ? `\`${value}\`` : '-');
+  const rows = workspaces.map(
+    (workspace) =>
+      `| ${workspace.name} | \`${workspace.path}\` | ${cell(workspace.commands.test)} | ${cell(workspace.commands.build)} | ${cell(workspace.commands.lint)} | ${cell(workspace.commands.typecheck)} |`,
+  );
+  const more = (detection.workspacesTotal ?? workspaces.length) - workspaces.length;
+  return [
+    '| Package | Path | Test | Build | Lint | Typecheck |',
+    '| --- | --- | --- | --- | --- | --- |',
+    ...rows,
+    ...(more > 0 ? ['', `+${more} more`] : []),
+  ].join('\n');
+}
+
 export function agentsTemplate(detection: ProjectDetection): string {
   const stacks = detection.stacks.length ? detection.stacks.join(', ') : 'Not detected yet';
 
@@ -16,6 +33,7 @@ This repository is prepared for AI coding agents with agent-flow.
 
 - Package manager: ${detection.packageManager}
 - Detected stack: ${stacks}
+- Test runner: ${detection.testRunner ?? 'Not detected yet'}
 
 ## Common Commands
 
@@ -25,7 +43,7 @@ ${commandLine('Build', detection.commands.build)}
 ${commandLine('Test', detection.commands.test)}
 ${commandLine('Lint', detection.commands.lint)}
 ${commandLine('Typecheck', detection.commands.typecheck)}
-
+${detection.workspaces?.length ? `\n## Workspaces\n\n${workspacesTable(detection)}\n` : ''}
 ## Agent Workflow
 
 Skills are the same in both runtimes: \`$flow-*\` in Codex (\`.agents/skills/\`), \`/flow-*\` in Claude Code (\`.claude/skills/\`).
@@ -73,7 +91,11 @@ ${detection.stacks.length ? detection.stacks.map((stack) => `- ${stack}`).join('
 ## Package Manager
 
 ${detection.packageManager}
-`;
+
+## Test Runner
+
+${detection.testRunner ?? 'Not detected yet'}
+${detection.workspaces?.length ? `\n## Workspaces\n\n${workspacesTable(detection)}\n` : ''}`;
 }
 
 export function requirementsTemplate(): string {

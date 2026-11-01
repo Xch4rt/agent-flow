@@ -3,7 +3,7 @@
 > Generated from `.agent-flow/plan.json` by `agent-flow plan render`. Edit the plan, not this file.
 
 **Milestone:** v0.11 — evidence and tuning
-**Progress:** 2/11 tasks (18%), 1/4 phases
+**Progress:** 5/11 tasks (45%), 2/4 phases
 
 ## Phase 1: Dogfood: agent-flow runs on itself — done
 **Goal:** The repo is planned, remembered and gated with its own loop; the first friction found is fixed.
@@ -19,26 +19,27 @@
   - A2 [test]: init --claude adds .claude/settings.local.json to .gitignore alongside the scratch entries
   - A3 [test]: doctor --tokens '.gitignore covers agent-flow scratch' check accepts the new entry set
 
-## Phase 2: Project detection beyond five frameworks — pending
+## Phase 2: Project detection beyond five frameworks — done
 **Goal:** onboard, AGENTS.md and context packs describe plain Node/TS, Python, Go, Rust and monorepo projects correctly.
 **Requirements:** DETECT-01, DETECT-02, DETECT-03
 **Depends on:** 1
 
-- [ ] 2.1 (wave 1) Detect plain Node/TypeScript projects, test runners, lint and typecheck — pending
+- [x] 2.1 (wave 1) Detect plain Node/TypeScript projects, test runners, lint and typecheck — done
   - A1 [test]: A package.json without a known framework yields stack 'Node' (plus 'TypeScript' when tsconfig.json or typescript dep exists), never 'none'
   - A2 [test]: Test runner is detected from devDependencies or the test script: vitest, jest, node:test, mocha
   - A3 [test]: lint and typecheck commands are detected from scripts (lint, eslint, typecheck, type-check, tsc) and from eslint/tsconfig presence when no script exists
   - A4 [test]: Package manager falls back to packageManager field in package.json, then to npm when package.json exists without a lockfile
   - A5 [manual]: This repo onboarded reports pnpm, Node + TypeScript, vitest, typecheck
-- [ ] 2.2 (wave 2) Detect Python, Go and Rust projects with their commands — pending
+- [x] 2.2 (wave 2) Detect Python, Go and Rust projects with their commands — done
   - A1 [test]: pyproject.toml / requirements.txt yields stack Python with test (pytest), lint (ruff/flake8 when configured) and the detected package manager (uv, poetry, pip)
   - A2 [test]: go.mod yields stack Go with go test ./..., go vet ./..., go build ./...
   - A3 [test]: Cargo.toml yields stack Rust with cargo test, cargo clippy, cargo build
   - A4 [test]: Gate resolution uses the detected commands when config has none for a gate name
-- [ ] 2.3 (wave 3) List monorepo workspaces as packages with their own commands — pending
+- [x] 2.3 (wave 3) List monorepo workspaces as packages with their own commands — done
   - A1 [test]: pnpm-workspace.yaml, package.json workspaces and turbo.json are recognized; each package is listed with name, path and its own test/build/lint/typecheck commands
   - A2 [test]: PROJECT.md and AGENTS.md generated sections include a Workspaces table when packages exist
   - A3 [test]: A context pack for a task whose scope lies inside one package names that package and its commands first
+  - A4 [test]: The detected test runner (vitest / jest / node:test / mocha) is printed by status and onboard and written to PROJECT.md and AGENTS.md generated sections
 
 ## Phase 3: Router feedback from observed usage — pending
 **Goal:** Judge the router from what tasks actually cost and how often they passed first time; suggest, never apply.

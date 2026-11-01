@@ -18,6 +18,7 @@ export async function runOnboard(options: OnboardOptions = {}): Promise<void> {
   console.log(
     keyValue('Detected stack:', result.inspection.detection.stacks.length ? result.inspection.detection.stacks.join(', ') : 'none'),
   );
+  console.log(keyValue('Test runner:', result.inspection.detection.testRunner ?? 'none'));
   console.log(keyValue('Important files:', String(result.inspection.importantFiles.length)));
   console.log(keyValue('Important directories:', String(result.inspection.importantDirectories.length)));
   console.log(keyValue('Risks:', String(result.inspection.risks.length)));

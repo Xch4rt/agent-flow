@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "milestone": "v0.11 — evidence and tuning",
   "createdAt": "2026-10-31T22:57:20.769Z",
-  "updatedAt": "2026-10-31T23:10:02.599Z",
+  "updatedAt": "2026-11-01T02:27:25.904Z",
   "cursor": {
-    "phase": "2",
-    "task": "2.1"
+    "phase": "3",
+    "task": "3.1"
   },
   "phases": [
     {
@@ -123,7 +123,7 @@
       "dependsOn": [
         "1"
       ],
-      "status": "pending",
+      "status": "done",
       "tasks": [
         {
           "id": "2.1",
@@ -135,7 +135,7 @@
           ],
           "wave": 1,
           "dependsOn": [],
-          "status": "pending",
+          "status": "done",
           "gates": [
             "test",
             "typecheck"
@@ -181,7 +181,7 @@
           "dependsOn": [
             "2.1"
           ],
-          "status": "pending",
+          "status": "done",
           "gates": [
             "test",
             "typecheck"
@@ -220,13 +220,17 @@
             "src/core/context-pack.ts",
             "test/detect-project.test.ts",
             "test/onboard.test.ts",
-            "test/context.test.ts"
+            "test/context.test.ts",
+            "src/commands/status.ts",
+            "src/commands/onboard.ts",
+            "src/commands/orchestrate.ts",
+            "test/status.test.ts"
           ],
           "wave": 3,
           "dependsOn": [
             "2.2"
           ],
-          "status": "pending",
+          "status": "done",
           "gates": [
             "test",
             "typecheck"
@@ -245,6 +249,11 @@
             {
               "id": "A3",
               "text": "A context pack for a task whose scope lies inside one package names that package and its commands first",
+              "proof": "test"
+            },
+            {
+              "id": "A4",
+              "text": "The detected test runner (vitest / jest / node:test / mocha) is printed by status and onboard and written to PROJECT.md and AGENTS.md generated sections",
               "proof": "test"
             }
           ],

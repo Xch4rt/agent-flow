@@ -3,6 +3,7 @@ import fs from 'fs-extra';
 import { execa } from 'execa';
 import type { ProjectDetection } from './detect-project.js';
 import { detectProject } from './detect-project.js';
+import { workspacesTable } from './templates.js';
 import { appendMemoryEntry, readMemoryEntries } from './jsonl-memory.js';
 
 export const onboardStartMarker = '<!-- agent-flow:onboard:start -->';
@@ -178,6 +179,10 @@ ${list(inspection.detection.stacks, 'No framework or runtime stack detected.')}
 
 ${inspection.detection.packageManager}
 
+### Test Runner
+
+${inspection.detection.testRunner ?? 'Not detected'}
+${inspection.detection.workspaces?.length ? `\n### Workspaces\n\n${workspacesTable(inspection.detection)}\n` : ''}
 ### Important Files
 
 ${list(inspection.importantFiles)}

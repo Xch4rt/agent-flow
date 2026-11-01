@@ -31,12 +31,11 @@ Initialized with agent-flow.
 
 ### Git Context
 
-- Branch: chore/dogfood
-- Last commit: 8858ce2 Merge pull request #11 from Xch4rt/feat/codex-parity
+- Branch: feat/detect
+- Last commit: bc4bb54 feat(detect): Python, Go and Rust projects with their commands
 - Dirty working tree: yes
 
 ### Risks
 
 - Git working tree has uncommitted changes.
-- Application stack not detected.
 <!-- agent-flow:onboard:end -->
