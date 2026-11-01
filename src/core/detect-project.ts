@@ -22,11 +22,27 @@ export type PackageManager = z.infer<typeof PackageManagerSchema>;
 export type StackName = z.infer<typeof StackNameSchema>;
 export type TestRunner = z.infer<typeof TestRunnerSchema>;
 
+export type WorkspaceCommands = {
+  test?: string;
+  build?: string;
+  lint?: string;
+  typecheck?: string;
+};
+
+export type Workspace = {
+  name: string;
+  path: string;
+  commands: WorkspaceCommands;
+};
+
 export type ProjectDetection = {
   root: string;
   packageManager: PackageManager;
   stacks: StackName[];
   testRunner?: TestRunner;
+  workspaces?: Workspace[];
+  workspacesTotal?: number;
+  workspaceTool?: 'pnpm' | 'npm' | 'yarn' | 'turbo';
   scripts: Record<string, string>;
   commands: {
     install?: string;
@@ -245,6 +261,156 @@ async function detectRust(root: string): Promise<LanguageDetection | undefined> 
   };
 }
 
+function workspaceScriptCommand(
+  packageManager: PackageManager,
+  name: string,
+  script: string,
+): string {
+  if (packageManager === 'pnpm') return `pnpm --filter ${name} ${script}`;
+  if (packageManager === 'yarn') return `yarn workspace ${name} ${script}`;
+  if (packageManager === 'bun') return `bun run --filter ${name} ${script}`;
+  return `npm run ${script} --workspace ${name}`;
+}
+
+async function readPackageJsonSafe(dir: string): Promise<Record<string, unknown> | undefined> {
+  try {
+    return await readPackageJson(dir);
+  } catch {
+    return undefined;
+  }
+}
+
+export const MAX_WORKSPACES = 25;
+
+const SAFE_PACKAGE_NAME = /^[@A-Za-z0-9][A-Za-z0-9._/-]*$/;
+
+function insideRoot(pattern: string): boolean {
+  if (path.isAbsolute(pattern) || /^[A-Za-z]:/.test(pattern)) return false;
+  return !pattern.split(/[\\/]+/).includes('..');
+}
+
+async function workspacePatterns(
+  root: string,
+  packageJson: Record<string, unknown> | undefined,
+  hasTurbo: boolean,
+): Promise<string[]> {
+  const patterns: string[] = [];
+
+  const pnpmYaml = await readText(root, 'pnpm-workspace.yaml');
+  if (pnpmYaml) {
+    let inPackages = false;
+    for (const line of pnpmYaml.split(/\r?\n/)) {
+      if (/^packages\s*:/.test(line)) {
+        const flow = /^packages\s*:\s*\[(.*)\]\s*(#.*)?$/.exec(line);
+        if (flow) {
+          for (const part of flow[1].split(',')) {
+            const value = part.trim().replace(/^['"]|['"]$/g, '').trim();
+            if (value) patterns.push(value);
+          }
+        } else {
+          inPackages = true;
+        }
+        continue;
+      }
+      if (inPackages) {
+        const item = /^\s*-\s*['"]?([^'"#]+?)['"]?\s*(#.*)?$/.exec(line);
+        if (item) patterns.push(item[1]);
+        else if (/^\s*(#.*)?$/.test(line)) continue;
+        else if (/^\S/.test(line)) inPackages = false;
+      }
+    }
+  }
+
+  const declared = packageJson?.workspaces;
+  const list = Array.isArray(declared)
+    ? declared
+    : declared && typeof declared === 'object' && Array.isArray((declared as { packages?: unknown }).packages)
+      ? (declared as { packages: unknown[] }).packages
+      : [];
+  for (const entry of list) if (typeof entry === 'string') patterns.push(entry);
+
+  if (patterns.length === 0 && hasTurbo) patterns.push('packages/*', 'apps/*');
+
+  return patterns.filter((pattern) => insideRoot(pattern.replace(/^!/, '')));
+}
+
+function segmentRegExp(segment: string): RegExp {
+  const escaped = segment.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*+/g, '[^/]*');
+  return new RegExp(`^${escaped}$`);
+}
+
+async function expandWorkspacePattern(root: string, pattern: string): Promise<string[]> {
+  const clean = pattern.replace(/^\.\//, '').replace(/\/+$/, '');
+  if (!clean || clean.startsWith('!') || !insideRoot(clean)) return [];
+  const segments = clean.split('/').filter((segment) => segment && segment !== '.');
+  let current: string[] = [''];
+  for (const segment of segments) {
+    const next: string[] = [];
+    for (const base of current) {
+      if (!segment.includes('*')) {
+        next.push(base ? `${base}/${segment}` : segment);
+        continue;
+      }
+      const baseDir = path.join(root, base);
+      if (!(await fs.pathExists(baseDir))) continue;
+      const matcher = segmentRegExp(segment);
+      const entries = await fs.readdir(baseDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory() || entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+        if (matcher.test(entry.name)) next.push(base ? `${base}/${entry.name}` : entry.name);
+      }
+    }
+    current = next;
+  }
+  return current.sort();
+}
+
+async function detectWorkspaces(
+  root: string,
+  packageJson: Record<string, unknown> | undefined,
+  packageManager: PackageManager,
+  hasTurbo: boolean,
+): Promise<{ workspaces: Workspace[]; total: number }> {
+  const patterns = await workspacePatterns(root, packageJson, hasTurbo);
+  if (patterns.length === 0) return { workspaces: [], total: 0 };
+  const excluded = new Set<string>();
+  for (const pattern of patterns) {
+    if (pattern.startsWith('!')) {
+      for (const dir of await expandWorkspacePattern(root, pattern.slice(1))) excluded.add(dir);
+    }
+  }
+
+  const seen = new Set<string>();
+  const workspaces: Workspace[] = [];
+  for (const pattern of patterns) {
+    for (const dir of await expandWorkspacePattern(root, pattern)) {
+      if (seen.has(dir) || excluded.has(dir)) continue;
+      seen.add(dir);
+      const pkg = await readPackageJsonSafe(path.join(root, dir));
+      if (!pkg) continue;
+      const name = typeof pkg.name === 'string' && pkg.name ? pkg.name : path.basename(dir);
+      if (!SAFE_PACKAGE_NAME.test(name)) continue;
+      const scripts = detectScripts(pkg);
+      const commandFor = (names: string[]): string | undefined => {
+        const script = names.find((candidate) => candidate in scripts);
+        return script ? workspaceScriptCommand(packageManager, name, script) : undefined;
+      };
+      const commands: WorkspaceCommands = {};
+      const test = commandFor(['test', 'test:unit']);
+      const build = commandFor(['build']);
+      const lint = commandFor(['lint', 'eslint']);
+      const typecheck = commandFor(['typecheck', 'type-check', 'tsc']);
+      if (test) commands.test = test;
+      if (build) commands.build = build;
+      if (lint) commands.lint = lint;
+      if (typecheck) commands.typecheck = typecheck;
+      workspaces.push({ name, path: dir, commands });
+    }
+  }
+  workspaces.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  return { workspaces: workspaces.slice(0, MAX_WORKSPACES), total: workspaces.length };
+}
+
 export async function detectProject(root = process.cwd()): Promise<ProjectDetection> {
   const packageJson = await readPackageJson(root);
   const scripts = detectScripts(packageJson);
@@ -305,16 +471,35 @@ export async function detectProject(root = process.cwd()): Promise<ProjectDetect
       root,
       packageManager: language.packageManager,
       stacks: [...stacks],
+      workspaces: [],
       scripts,
       commands: language.commands,
     };
   }
+
+  const hasTurbo = await exists(root, 'turbo.json');
+  const { workspaces, total: workspacesTotal } = await detectWorkspaces(
+    root,
+    packageJson,
+    packageManager,
+    hasTurbo,
+  );
+  const workspaceTool: ProjectDetection['workspaceTool'] | undefined = hasTurbo
+    ? 'turbo'
+    : workspaces.length > 0
+      ? packageManager === 'pnpm' || packageManager === 'yarn'
+        ? packageManager
+        : 'npm'
+      : undefined;
 
   return {
     root,
     packageManager,
     stacks: [...stacks],
     ...(testRunner ? { testRunner } : {}),
+    workspaces,
+    workspacesTotal,
+    ...(workspaceTool ? { workspaceTool } : {}),
     scripts,
     commands: {
       install: installCommand(packageManager),

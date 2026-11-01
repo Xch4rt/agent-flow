@@ -5,6 +5,8 @@ coverage
 
 # agent-flow scratch (generated)
 .agent-flow/memory.db
+.agent-flow/memory.db-shm
+.agent-flow/memory.db-wal
 .agent-flow/logs/
 .agent-flow/handoffs/
 .agent-flow/review-*.prompt.md

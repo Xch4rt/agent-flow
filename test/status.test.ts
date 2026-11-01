@@ -32,6 +32,7 @@ describe('status command', () => {
       dependencies: {
         next: '^15.0.0',
       },
+      devDependencies: { vitest: '^1.0.0' },
     });
     await fs.writeFile(path.join(tmpDir, 'pnpm-lock.yaml'), '');
     await runInit({ codex: true, cwd: tmpDir });
@@ -48,6 +49,7 @@ describe('status command', () => {
 
     expect(output).toContain('Package manager: pnpm');
     expect(output).toContain('Detected stack: Next.js');
+    expect(output.split('\n').find((line) => line.includes('Test runner:'))).toContain('vitest');
     expect(output).toContain('Detected commands:');
     expect(output).toContain('dev: pnpm dev');
     expect(output).toContain('Missing adapter files: 0');

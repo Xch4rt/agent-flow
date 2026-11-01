@@ -6,13 +6,16 @@ import { resolveGateCommands } from '../src/core/gates.js';
 import { detectProject } from '../src/core/detect-project.js';
 
 let tmpDir: string;
+let outsideDir: string;
 
 beforeEach(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-flow-detect-test-'));
+  outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-flow-detect-outside-'));
 });
 
 afterEach(async () => {
   await fs.remove(tmpDir);
+  await fs.remove(outsideDir);
 });
 
 async function writePackageJson(dependencies: Record<string, string> = {}): Promise<void> {
@@ -215,5 +218,145 @@ describe('non-Node language detection', () => {
     await fs.remove(path.join(tmpDir, 'go.mod'));
     await fs.writeFile(path.join(tmpDir, 'Cargo.toml'), '[package]\nname="x"\n');
     expect(await resolveGateCommands(tmpDir)).toMatchObject({ test: 'cargo test', build: 'cargo build' });
+  });
+});
+
+describe('monorepo workspaces', () => {
+  async function writePackage(dir: string, name: string, scripts: Record<string, string>): Promise<void> {
+    await fs.ensureDir(path.join(tmpDir, dir));
+    await fs.writeJson(path.join(tmpDir, dir, 'package.json'), { name, scripts });
+  }
+
+  it('lists pnpm-workspace.yaml packages with their own commands', async () => {
+    await fs.writeFile(path.join(tmpDir, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n  - '!packages/skip'\n  - apps/web\n");
+    await fs.writeFile(path.join(tmpDir, 'pnpm-lock.yaml'), '');
+    await fs.writeJson(path.join(tmpDir, 'package.json'), { name: 'root', scripts: { test: 'turbo test' } });
+    await fs.writeJson(path.join(tmpDir, 'turbo.json'), { tasks: {} });
+    await writePackage('packages/core', '@acme/core', { test: 'vitest', build: 'tsc', typecheck: 'tsc --noEmit' });
+    await writePackage('packages/skip', '@acme/skip', { test: 'x' });
+    await writePackage('apps/web', '@acme/web', { lint: 'eslint .' });
+
+    const { workspaces } = await detectProject(tmpDir);
+
+    expect(workspaces).toEqual([
+      { name: '@acme/web', path: 'apps/web', commands: { lint: 'pnpm --filter @acme/web lint' } },
+      {
+        name: '@acme/core',
+        path: 'packages/core',
+        commands: {
+          test: 'pnpm --filter @acme/core test',
+          build: 'pnpm --filter @acme/core build',
+          typecheck: 'pnpm --filter @acme/core typecheck',
+        },
+      },
+    ]);
+  });
+
+  it('reads package.json workspaces arrays and objects', async () => {
+    await fs.writeJson(path.join(tmpDir, 'package.json'), { name: 'root', workspaces: { packages: ['libs/*'] } });
+    await writePackage('libs/a', 'a', { test: 'jest' });
+
+    const { workspaces } = await detectProject(tmpDir);
+
+    expect(workspaces).toEqual([
+      { name: 'a', path: 'libs/a', commands: { test: 'npm run test --workspace a' } },
+    ]);
+  });
+
+  it('finds packages from turbo.json alone and reports turbo', async () => {
+    await fs.writeJson(path.join(tmpDir, 'turbo.json'), { tasks: {} });
+    await writePackage('packages/a', 'a', { test: 'vitest' });
+    await writePackage('apps/b', 'b', { build: 'tsc' });
+
+    const detection = await detectProject(tmpDir);
+
+    expect(detection.workspaceTool).toBe('turbo');
+    expect(detection.workspaces?.map((w) => w.path)).toEqual(['apps/b', 'packages/a']);
+  });
+
+  it('skips packages with malformed package.json without throwing', async () => {
+    await fs.writeJson(path.join(tmpDir, 'package.json'), { name: 'root', workspaces: ['packages/*'] });
+    await writePackage('packages/ok', 'ok', { test: 'vitest' });
+    await fs.ensureDir(path.join(tmpDir, 'packages/bad'));
+    await fs.writeFile(path.join(tmpDir, 'packages/bad/package.json'), '{ not json');
+
+    const { workspaces } = await detectProject(tmpDir);
+
+    expect(workspaces?.map((w) => w.name)).toEqual(['ok']);
+  });
+
+  it('ignores patterns outside the root and unsafe package names', async () => {
+    await fs.writeJson(path.join(tmpDir, 'package.json'), {
+      name: 'root',
+      workspaces: [`../${path.basename(outsideDir)}/*`, '/etc/*', 'packages/*'],
+    });
+    await fs.ensureDir(path.join(outsideDir, 'x'));
+    await fs.writeJson(path.join(outsideDir, 'x/package.json'), { name: 'leak' });
+    await writePackage('packages/evil', 'x; rm -rf ~', { test: 'vitest' });
+    await writePackage('packages/good', 'good', { test: 'vitest' });
+
+    const { workspaces } = await detectProject(tmpDir);
+
+    expect(workspaces?.map((w) => w.name)).toEqual(['good']);
+  });
+
+  it('returns no workspaces for a plain project', async () => {
+    await writePackageJson();
+    expect((await detectProject(tmpDir)).workspaces).toEqual([]);
+  });
+
+  it('skips package names starting with a dash', async () => {
+    await fs.writeJson(path.join(tmpDir, 'package.json'), { name: 'root', workspaces: ['packages/*'] });
+    await writePackage('packages/flag', '-rf', { test: 'vitest' });
+    await writePackage('packages/good', 'good', { test: 'vitest' });
+
+    const { workspaces } = await detectProject(tmpDir);
+
+    expect(workspaces?.map((w) => w.name)).toEqual(['good']);
+  });
+
+  it('caps workspaces at 25 and reports the total', async () => {
+    await fs.writeJson(path.join(tmpDir, 'package.json'), { name: 'root', workspaces: ['packages/*'] });
+    for (let i = 0; i < 30; i += 1) await writePackage(`packages/p${String(i).padStart(2, '0')}`, `p${i}`, { test: 'vitest' });
+
+    const detection = await detectProject(tmpDir);
+
+    expect(detection.workspaces).toHaveLength(25);
+    expect(detection.workspacesTotal).toBe(30);
+    expect(detection.workspaces?.[0].path).toBe('packages/p00');
+    expect(detection.workspaces?.[24].path).toBe('packages/p24');
+  });
+
+  it('keeps reading pnpm packages past a column-0 comment', async () => {
+    await fs.writeFile(
+      path.join(tmpDir, 'pnpm-workspace.yaml'),
+      "packages:\n  - 'libs/a'\n# a comment\n  - 'libs/b'\n",
+    );
+    await writePackage('libs/a', 'a', {});
+    await writePackage('libs/b', 'b', {});
+
+    expect((await detectProject(tmpDir)).workspaces?.map((w) => w.name)).toEqual(['a', 'b']);
+  });
+
+  it('parses flow-style pnpm package lists', async () => {
+    await writePackage('libs/a', 'a', {});
+    await writePackage('libs/b', 'b', {});
+    await fs.writeFile(path.join(tmpDir, 'pnpm-workspace.yaml'), "packages: ['libs/a', 'libs/b']\n");
+    expect((await detectProject(tmpDir)).workspaces?.map((w) => w.name)).toEqual(['a', 'b']);
+    await fs.writeFile(path.join(tmpDir, 'pnpm-workspace.yaml'), 'packages: ["libs/a"]\n');
+    expect((await detectProject(tmpDir)).workspaces?.map((w) => w.name)).toEqual(['a']);
+  });
+
+  it('expands partial globs per path segment', async () => {
+    await fs.writeJson(path.join(tmpDir, 'package.json'), {
+      name: 'root',
+      workspaces: ['packages/core-*', 'apps/*/pkg'],
+    });
+    await writePackage('packages/core-a', 'core-a', {});
+    await writePackage('packages/other', 'other', {});
+    await writePackage('apps/web/pkg', 'web-pkg', {});
+    await writePackage('apps/web/nope', 'nope', {});
+
+    expect((await detectProject(tmpDir)).workspaces?.map((w) => w.name)).toEqual(['web-pkg', 'core-a']);
   });
 });
