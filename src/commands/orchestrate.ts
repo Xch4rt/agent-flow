@@ -351,8 +351,8 @@ export async function runAdvance(options: AdvanceOptions = {}): Promise<void> {
     gateDetail = run.ok ? 'gates re-run and green' : 'gates re-run and FAILED';
     if (!run.ok) printGateResults(run.results);
   } else {
-    const cache = await readGateCache(root);
-    if (!cache || cache.task !== task.id) {
+    const cache = await readGateCache(root, task.id);
+    if (!cache) {
       gateOk = false;
       gateDetail = `no gate result for task ${task.id}`;
     } else if (cache.signature !== signature) {

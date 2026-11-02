@@ -54,6 +54,8 @@ export async function guardHookInstalled(root: string): Promise<boolean> {
 export const GITIGNORE_ENTRIES = [
   '.claude/settings.local.json',
   '.agent-flow/memory.db',
+  '.agent-flow/memory.db-shm',
+  '.agent-flow/memory.db-wal',
   '.agent-flow/logs/',
   '.agent-flow/handoffs/',
   '.agent-flow/review-*.prompt.md',

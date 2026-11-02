@@ -180,7 +180,7 @@ describe('installation', () => {
     await ensureGitignore(tmpDir);
     const content = await fs.readFile(path.join(tmpDir, '.gitignore'), 'utf8');
     expect(content.startsWith('node_modules\n.agent-flow/memory.db\n')).toBe(true);
-    expect(content.match(/\.agent-flow\/memory\.db/g)).toHaveLength(1);
+    expect(content.split('\n').filter((l) => l.trim() === '.agent-flow/memory.db')).toHaveLength(1);
     for (const entry of GITIGNORE_ENTRIES) expect(content).toContain(entry);
     expect((await ensureGitignore(tmpDir)).status).toBe('skipped');
   });

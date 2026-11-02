@@ -191,22 +191,44 @@ export type GateCache = {
   at: string;
 };
 
+export type GateCacheFile = Record<string, GateCache>;
+
 export function gateCachePath(root: string): string {
   return path.join(root, GATE_CACHE_RELATIVE);
 }
 
-export async function writeGateCache(root: string, cache: GateCache): Promise<void> {
+async function readGateCacheFile(root: string): Promise<GateCacheFile> {
   const file = gateCachePath(root);
-  await fs.ensureDir(path.dirname(file));
-  await fs.writeJson(file, cache, { spaces: 2 });
+  if (!(await fs.pathExists(file))) return {};
+  try {
+    const raw = (await fs.readJson(file)) as unknown;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const obj = raw as Record<string, unknown>;
+    // Legacy shape: a single record { task, signature, ok, gates, at }.
+    if (typeof obj.task === 'string' && typeof obj.signature === 'string') {
+      return { [obj.task]: obj as unknown as GateCache };
+    }
+    const out: GateCacheFile = {};
+    for (const [id, value] of Object.entries(obj)) {
+      if (value && typeof value === 'object' && typeof (value as GateCache).signature === 'string') {
+        out[id] = value as GateCache;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
 }
 
-export async function readGateCache(root: string): Promise<GateCache | null> {
+export async function writeGateCache(root: string, cache: GateCache): Promise<void> {
   const file = gateCachePath(root);
-  if (!(await fs.pathExists(file))) return null;
-  try {
-    return (await fs.readJson(file)) as GateCache;
-  } catch {
-    return null;
-  }
+  const all = await readGateCacheFile(root);
+  all[cache.task] = cache;
+  await fs.ensureDir(path.dirname(file));
+  await fs.writeJson(file, all, { spaces: 2 });
+}
+
+export async function readGateCache(root: string, taskId: string): Promise<GateCache | null> {
+  const all = await readGateCacheFile(root);
+  return all[taskId] ?? null;
 }

@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "milestone": "v0.11 — evidence and tuning",
   "createdAt": "2026-10-31T22:57:20.769Z",
-  "updatedAt": "2026-11-02T05:16:18.808Z",
+  "updatedAt": "2026-11-02T05:17:47.589Z",
   "cursor": {
     "phase": "2c",
-    "task": "2c.1"
+    "task": "2c.2"
   },
   "phases": [
     {
@@ -364,7 +364,7 @@
       "dependsOn": [
         "2b"
       ],
-      "status": "pending",
+      "status": "active",
       "tasks": [
         {
           "id": "2c.1",
@@ -377,7 +377,7 @@
           ],
           "wave": 1,
           "dependsOn": [],
-          "status": "pending",
+          "status": "done",
           "gates": [
             "test",
             "typecheck"
@@ -411,11 +411,12 @@
           "title": "init ignores every SQLite side file of the memory index",
           "scope": [
             "src/core/claude-settings.ts",
-            "test/init.test.ts"
+            "test/init.test.ts",
+            "test/guard.test.ts"
           ],
           "wave": 1,
           "dependsOn": [],
-          "status": "pending",
+          "status": "active",
           "gates": [
             "test",
             "typecheck"
