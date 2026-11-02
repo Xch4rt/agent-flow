@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "milestone": "v0.11 — evidence and tuning",
+  "milestone": "v0.12 \u2014 evidence and tuning (phases 1\u20132c shipped in v0.11.0)",
   "createdAt": "2026-10-31T22:57:20.769Z",
   "updatedAt": "2026-11-02T05:21:38.395Z",
   "cursor": {
@@ -655,7 +655,7 @@
           "acceptance": [
             {
               "id": "A1",
-              "text": "Three runs per task × variant (plain, gsd, agent-flow) × runtime (claude, codex); bench report --out docs/bench-results.md",
+              "text": "Three runs per task \u00d7 variant (plain, gsd, agent-flow) \u00d7 runtime (claude, codex); bench report --out docs/bench-results.md",
               "proof": "manual"
             },
             {

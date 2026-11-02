@@ -1,6 +1,6 @@
 # Requirements
 
-Milestone **v0.11 — evidence and tuning**: agent-flow runs on itself, its central
+Milestone **v0.12 — evidence and tuning** (phases 1, 2, 2b and 2c shipped in v0.11.0): agent-flow runs on itself, its central
 claims are backed by a published benchmark, the router can be judged from observed
 usage, and onboarding understands more projects.
 

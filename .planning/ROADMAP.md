@@ -2,7 +2,7 @@
 
 > Generated from `.agent-flow/plan.json` by `agent-flow plan render`. Edit the plan, not this file.
 
-**Milestone:** v0.11 — evidence and tuning
+**Milestone:** v0.12 — evidence and tuning (phases 1–2c shipped in v0.11.0)
 **Progress:** 9/15 tasks (60%), 4/6 phases
 
 ## Phase 1: Dogfood: agent-flow runs on itself — done
