@@ -4,10 +4,24 @@ updates:
     directory: /
     schedule:
       interval: weekly
+      day: monday
+    # Majors of runtime and dev dependencies are deliberate migrations (zod 4, better-sqlite3 13,
+    # execa 10 all broke on arrival); they are planned by hand, not opened weekly.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
+      runtime-dependencies:
+        dependency-type: production
+        update-types: [minor, patch]
       dev-dependencies:
         dependency-type: development
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
