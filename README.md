@@ -4,7 +4,7 @@ Local workflow, memory and token discipline for AI coding agents — Claude Code
 
 > Never explain your repo twice. Never trust "done" without green gates. Never pay to re-read what you don't need.
 
-![agent-flow quickstart](demo/out/quickstart.gif)
+![one task, a gate that fails for real, the fix, the close](demo/out/hero.gif)
 
 ```sh
 npm install -g @xch4rt/agent-flow
@@ -28,7 +28,7 @@ Agent Flow emits the envelopes and runs the gates; your agent does the work; `ad
 
 - **Agents forget your repo.** Planning files and append-only memory live in the repo; task-focused context packs replace re-explaining or pasting the codebase.
 - **Agents say "done" too easily.** A committed plan with acceptance criteria, deterministic gates (tests, typecheck, a boot-and-probe smoke gate) and independent phase reviews make "done" mean something.
-- **Plans miss what experts know.** Pitfall packs flag missing table-stakes criteria for free; one hardening agent fills the rest — it matched a research-heavy multi-agent pipeline's quality at **24% of its tokens**.
+- **Plans miss what experts know.** Pitfall packs flag missing table-stakes criteria for free; one hardening agent fills the rest. In our one experiment so far it matched a research-heavy multi-agent pipeline's hardening checklist at a fraction of its tokens ([evidence and limits](#evidence-so-far)).
 - **Agents burn tokens on the wrong things.** Most spend is context re-read on every turn, prompt caches expiring between turns, and long-lived subagents. Agent Flow measures that and designs around it (below).
 
 Everything is local files in your repo. No server, no embeddings, no external services.
@@ -53,6 +53,19 @@ agent-flow plan show                  # progress + each task's routed tier
 ```
 
 → Full details: **[docs/orchestration.md](docs/orchestration.md)** · **[docs/commands.md](docs/commands.md)**
+
+### Evidence so far
+
+One experiment, not a benchmark yet. In June 2026 we built the same small project three ways in Claude Code: a URL shortener with four requirements (`linklite`, plain Node, `node:test`), with the bare agent-flow loop, with the hardened loop (`plan validate` → one hardening agent → `plan harden --apply`), and with GSD's research-heavy pipeline (four researchers, synthesizer, planner, plan-checker, executor, verifier, per phase). Quality was scored on a 10-item hardening checklist (scheme allowlist, body cap with 413, `Cache-Control: no-store` on the redirect, atomic writes, serialized writes, crypto-grade slugs, CRLF guard, slug-format guard, corrupt-file fail-loud, bounded collision retry) plus passing tests and a live boot-and-probe.
+
+| | agent-flow, bare | agent-flow, hardened | GSD |
+| --- | --- | --- | --- |
+| Hardening checklist | 2/10 | **10/10** | 7.5/10 |
+| Subagent tokens (as reported by Claude Code) | ~90k | **~116k** | ~475k |
+| Agent wall time | ~6 min | **~8 min** | ~55 min |
+| Subagents | 5 | 6 | 11 |
+
+That is where "24% of the tokens" comes from: 116k against 475k. Its limits are real: one task in one domain, one run per workflow, the plan authored by the same person who built the tool, no hidden acceptance tests, and the models per run were not recorded. A reproducible benchmark (`agent-flow bench`: three tasks, hidden tests, `plain` / `gsd` / `agent-flow`, Claude Code and Codex, medians over several runs) is phase 4 of the current plan and will replace this section.
 
 ## The daily loop
 
@@ -132,7 +145,7 @@ Known limits: no semantic search (deterministic scoring only) · monorepos not d
 
 ## Demos
 
-Reproducible VHS recordings (tapes + fixtures + voiceover scripts) live in [`demo/`](demo/). Bench tasks live in [`bench/tasks/`](bench/tasks/).
+Reproducible VHS recordings (tapes + fixtures + voiceover scripts) live in [`demo/`](demo/): the 40-second cut above, the [quickstart](demo/out/quickstart.gif) (init → onboard → doctor → validated plan), [hardening](demo/out/harden.gif) and the full [daily loop](demo/out/daily-loop.gif) with the independent review. Bench tasks live in [`bench/tasks/`](bench/tasks/).
 
 ## License
 
