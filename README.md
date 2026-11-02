@@ -147,6 +147,10 @@ Known limits: no semantic search (deterministic scoring only) · monorepos not d
 
 Reproducible VHS recordings (tapes + fixtures + voiceover scripts) live in [`demo/`](demo/): the 40-second cut above, the [quickstart](demo/out/quickstart.gif) (init → onboard → doctor → validated plan), [hardening](demo/out/harden.gif) and the full [daily loop](demo/out/daily-loop.gif) with the independent review. Bench tasks live in [`bench/tasks/`](bench/tasks/).
 
+## Contributing
+
+Issues and pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). `main` is protected; CI runs typecheck, build and tests on every PR. Security reports go through [SECURITY.md](SECURITY.md).
+
 ## License
 
 MIT
