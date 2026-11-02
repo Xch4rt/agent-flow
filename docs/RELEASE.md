@@ -1,6 +1,6 @@
 # Release Checklist
 
-## Any release (current: v0.10.0)
+## Any release (current: v0.11.0)
 
 ```sh
 pnpm install --frozen-lockfile

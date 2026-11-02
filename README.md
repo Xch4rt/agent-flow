@@ -4,7 +4,7 @@ Local workflow, memory and token discipline for AI coding agents — Claude Code
 
 > Never explain your repo twice. Never trust "done" without green gates. Never pay to re-read what you don't need.
 
-![one task, a gate that fails for real, the fix, the close](demo/out/hero.gif)
+![one task, a gate that fails for real, the fix, the close](https://raw.githubusercontent.com/Xch4rt/agent-flow/main/demo/out/hero.gif)
 
 ```sh
 npm install -g @xch4rt/agent-flow
@@ -77,7 +77,7 @@ agent-flow advance --task 1.1   # closes only if gates are green for the current
 git commit ...                  # commit AFTER advance: the gate result is keyed to the working tree
 ```
 
-![the daily loop: red gate, fix, refuse, review, advance, commit](demo/out/daily-loop.gif)
+![the daily loop: red gate, fix, refuse, review, advance, commit](https://raw.githubusercontent.com/Xch4rt/agent-flow/main/demo/out/daily-loop.gif)
 
 `agent-flow` with no arguments opens the terminal dashboard; `agent-flow plan show` prints progress and each task's routed tier.
 
@@ -90,7 +90,7 @@ agent-flow plan validate   # pitfall packs flag missing table-stakes criteria �
 agent-flow plan harden | <one agent> | agent-flow plan harden --apply --from-json -
 ```
 
-![domain hardening: packs flag the gaps, one agent fills them](demo/out/harden.gif)
+![domain hardening: packs flag the gaps, one agent fills them](https://raw.githubusercontent.com/Xch4rt/agent-flow/main/demo/out/harden.gif)
 
 Hardening criteria feed the router too: `plan show` after a hardening pass typically moves the affected tasks to the deep tier.
 
@@ -123,29 +123,30 @@ Planning lives in `.planning/`, append-only memory in `.memory/*.jsonl` (reviewa
 
 → Full details: **[docs/memory.md](docs/memory.md)**
 
-## Upgrading from 0.9
+## Upgrading
 
 ```sh
 npm install -g @xch4rt/agent-flow@latest
-agent-flow init --claude --force   # regenerates skills, agents and CLAUDE.md — review the diff if you customized them
-agent-flow init --codex --force    # skills now live in .agents/skills/ (+ .codex/agents, .codex/hooks.json)
-rm -r .codex/skills/flow-*         # 0.9 location, deprecated by Codex — doctor flags leftovers
+agent-flow onboard --refresh       # 0.11: picks up Node/TypeScript, test runner and workspaces in PROJECT.md
+agent-flow init                    # appends the new .gitignore entries; add --claude/--codex --force to regenerate skills, agents and AGENTS.md
 agent-flow doctor --tokens
 ```
+
+From 0.9: `init --codex --force` moves skills to `.agents/skills/`; delete the old `.codex/skills/flow-*` (doctor flags leftovers). Full notes per version in [CHANGELOG.md](CHANGELOG.md).
 
 If `npm install -g` fails with `EACCES`, install Node with a version manager (nvm, fnm, volta) or set a user-level npm prefix instead of using `sudo`.
 
 ## Status
 
-Current (v0.10.x): Claude Code and Codex at parity — the full loop as skills in both, role agents with explicit models, session guard hooks, observed usage from transcripts and rollouts — on top of token-aware orchestration (thin dispatcher, deterministic router, tiered executors, escalation by evidence), compact tool output, benchmarks, the orchestration loop (plan/next/gate/advance, tiered reviews, wave fan-out, smoke gate), domain hardening, deterministic onboarding (`agent-flow onboard`), indexed context packs and the terminal dashboard (`agent-flow` with no arguments).
+Current (v0.11.x): the repo runs on its own loop; project detection for plain Node/TS, Python, Go, Rust and monorepos; compact output for go test, cargo test, ruff and rustc; Claude Code and Codex at parity — the full loop as skills in both, role agents with explicit models, session guard hooks, observed usage from transcripts and rollouts — on top of token-aware orchestration (thin dispatcher, deterministic router, tiered executors, escalation by evidence), compact tool output, benchmarks, the orchestration loop (plan/next/gate/advance, tiered reviews, wave fan-out, smoke gate), domain hardening, deterministic onboarding (`agent-flow onboard`), indexed context packs and the terminal dashboard (`agent-flow` with no arguments).
 
-Roadmap: published bench results vs GSD (both runtimes) · more bench tasks · symbol maps in task envelopes · more pitfall packs (frontend/XSS, SQL, CLI, concurrency).
+Roadmap (v0.12, see `.agent-flow/plan.json`): `router report` — judge the router from observed usage · the reproducible benchmark vs GSD and plain, three tasks, both runtimes · then more pitfall packs (frontend/XSS, SQL, CLI, concurrency) and symbol maps in task envelopes.
 
 Known limits: no semantic search (deterministic scoring only) · monorepos not deeply understood · the guard relies on Claude Code / Codex hook inputs and transcript formats that may change between versions (it degrades to doing nothing).
 
 ## Demos
 
-Reproducible VHS recordings (tapes + fixtures + voiceover scripts) live in [`demo/`](demo/): the 40-second cut above, the [quickstart](demo/out/quickstart.gif) (init → onboard → doctor → validated plan), [hardening](demo/out/harden.gif) and the full [daily loop](demo/out/daily-loop.gif) with the independent review. Bench tasks live in [`bench/tasks/`](bench/tasks/).
+Reproducible VHS recordings (tapes + fixtures + voiceover scripts) live in [`demo/`](demo/): the 40-second cut above, the [quickstart](https://raw.githubusercontent.com/Xch4rt/agent-flow/main/demo/out/quickstart.gif) (init → onboard → doctor → validated plan), [hardening](https://raw.githubusercontent.com/Xch4rt/agent-flow/main/demo/out/harden.gif) and the full [daily loop](https://raw.githubusercontent.com/Xch4rt/agent-flow/main/demo/out/daily-loop.gif) with the independent review. Bench tasks live in [`bench/tasks/`](bench/tasks/).
 
 ## Contributing
 

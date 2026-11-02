@@ -1,5 +1,41 @@
 # Changelog
 
+## v0.11.0
+
+agent-flow now runs on itself, understands projects beyond Node, and fixes two loop bugs that dogfooding found. The README shows a 33-second cut of the loop and puts the "24% of the tokens" figure in context.
+
+### Upgrading
+
+- `npm install -g @xch4rt/agent-flow@latest`. No breaking changes; config, plan and memory formats are unchanged (the gate cache migrates itself on first write).
+- `agent-flow onboard --refresh` to pick up the new detection in `PROJECT.md`: Node / TypeScript, test runner, workspaces. `agent-flow init` (no `--force` needed) appends the new `.gitignore` entries; `init --claude --force` / `--codex --force` regenerates AGENTS.md with the test-runner line if you want it.
+
+### Project detection
+
+- Plain Node and TypeScript projects are detected as such instead of `none`; test runner (vitest, jest, node:test, mocha), lint and typecheck fall back to eslint / tsc when a config exists but no script; package manager from the `packageManager` field, then npm.
+- Python (uv, poetry, pip; pytest; ruff / flake8), Go (`go test/vet/build ./...`) and Rust (`cargo test/clippy/build`) with their commands, used by the gates when config has none.
+- Monorepo workspaces (pnpm-workspace.yaml, package.json workspaces, turbo.json) listed as packages with per-package commands in PROJECT.md, AGENTS.md and the context pack, capped at 25; hardened against malformed package.json, patterns outside the root and unsafe package names. `status` and `onboard` print the test runner.
+
+### Beyond Node
+
+- `agent-flow run` and the gates print `file:line — reason` failures for `go test` (plain, -v, subtests), `cargo test`, `ruff check` and clippy / rustc diagnostics; existing parsers keep precedence.
+- `onboard` treats go.mod, Cargo.toml, uv.lock, poetry.lock, Pipfile, setup.py / setup.cfg, Makefile and `cmd/ internal/ pkg/ crates/ tests/` as important. The randomness pack names CSPRNG with examples for Node, Python, Go and Rust.
+
+### Loop fixes (found by dogfooding)
+
+- `gate-cache.json` held a single record, so gating the second task of a `next --wave` batch discarded the first's green result and `advance` refused it. The cache is now a map keyed by task id, written atomically under an advisory lock; legacy files are migrated, corrupt ones tolerated.
+- `init` reports `.gitignore` as `appended` (it said `overwritten`) and ignores `.claude/settings.local.json`, the SQLite side files `memory.db-shm` / `memory.db-wal` and the gate-cache lock file.
+
+### CLI and docs
+
+- Each command's header is one line; the old "voxel workflow agent" subtitle is gone.
+- README: quickstart is `init → onboard → doctor`; the daily loop shows the commit-after-`advance` rule; a 33-second hero demo; "Evidence so far" states the June 2026 experiment behind the 24% figure with its setup, scoring and limits. Demos re-recorded against real cases (`demo/`).
+- The repo dogfoods agent-flow: `.agent-flow/plan.json`, `.planning/`, `.memory/` and the skills for both runtimes are committed; friction is recorded in `.memory/events.jsonl` (tag `dogfood`).
+- Contributing: CI on Node 20 / 22 / 24 with a CLI smoke run, protected `main`, Dependabot (minors and patches, grouped), templates, CONTRIBUTING / SECURITY / CODE_OF_CONDUCT.
+
+### Known
+
+- `doctor` exits 1 on a project initialized with `--agent none` when Codex is installed on the machine (it checks Codex skill files that init never wrote). Fix queued.
+
 ## v0.10.0
 
 Codex parity: the full daily loop, role agents with explicit models, the session guard and observed usage now work the same in Codex (CLI ≥ 0.160 / ChatGPT desktop, October 2026) and Claude Code.
