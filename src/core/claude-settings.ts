@@ -63,6 +63,7 @@ export const GITIGNORE_ENTRIES = [
   '.agent-flow/harden.*',
   '.agent-flow/task-stats.json',
   '.agent-flow/gate-cache.json',
+  '.agent-flow/gate-cache.json.lock',
   '.agent-flow/guard-state.json',
   '.agent-flow/bench/',
 ];

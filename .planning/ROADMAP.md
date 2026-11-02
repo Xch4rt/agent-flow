@@ -3,7 +3,7 @@
 > Generated from `.agent-flow/plan.json` by `agent-flow plan render`. Edit the plan, not this file.
 
 **Milestone:** v0.11 — evidence and tuning
-**Progress:** 7/15 tasks (47%), 3/6 phases
+**Progress:** 9/15 tasks (60%), 4/6 phases
 
 ## Phase 1: Dogfood: agent-flow runs on itself — done
 **Goal:** The repo is planned, remembered and gated with its own loop; the first friction found is fixed.
@@ -57,17 +57,17 @@
   - A2 [test]: A Go fixture (go.mod + cmd/ + internal/) onboards with go.mod and cmd listed as important and no 'Package manager not detected' risk; a Rust fixture likewise with Cargo.toml
   - A3 [test]: The randomness pack criterion names the property (CSPRNG) with examples for Node, Python, Go and Rust instead of only crypto.randomBytes / Math.random; existing harden tests still match by criterion id
 
-## Phase 2c: Loop fixes found by dogfooding — pending
+## Phase 2c: Loop fixes found by dogfooding — done
 **Goal:** Wave fan-out and the generated .gitignore work as documented.
 **Requirements:** DOG-03
 **Depends on:** 2b
 
-- [ ] 2c.1 (wave 1) Gate cache keyed per task so a wave can be gated before it is advanced — pending
+- [x] 2c.1 (wave 1) Gate cache keyed per task so a wave can be gated before it is advanced — done
   - A1 [test]: .agent-flow/gate-cache.json stores one record per task id; gating task B no longer discards task A's green result
   - A2 [test]: advance still refuses when the task's own cached signature does not match the current worktree
   - A3 [test]: A legacy single-record cache file is read as a one-entry map (no crash, no stale pass)
   - A4 [test]: Integration: gate A, gate B, advance A, advance B succeeds for two scope-disjoint tasks in one wave
-- [ ] 2c.2 (wave 1) init ignores every SQLite side file of the memory index — pending
+- [x] 2c.2 (wave 1) init ignores every SQLite side file of the memory index — done
   - A1 [test]: GITIGNORE_ENTRIES ignores .agent-flow/memory.db-shm and .agent-flow/memory.db-wal (or a pattern covering them) and missingGitignoreEntries treats a .gitignore that already has only memory.db as missing them
 
 ## Phase 3: Router feedback from observed usage — pending

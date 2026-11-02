@@ -197,6 +197,9 @@ describe('next / gate / advance loop', () => {
     plan.phases[0].tasks[1].wave = 1;
     plan.phases[0].tasks[1].scope = ['src/b.ts'];
     await writePlan(tmpDir, plan);
+    await fs.ensureDir(path.join(tmpDir, 'src'));
+    await fs.writeFile(path.join(tmpDir, 'src/a.ts'), 'export const a = 1;\n');
+    await fs.writeFile(path.join(tmpDir, 'src/b.ts'), 'export const b = 2;\n');
 
     await runGateCommand({ cwd: tmpDir, task: '1.1' });
     await runGateCommand({ cwd: tmpDir, task: '1.2' });
@@ -220,9 +223,39 @@ describe('next / gate / advance loop', () => {
     await writePlan(tmpDir, twoTaskPlan());
     await writeGateCache(tmpDir, { task: '1.1', signature: 'stale', ok: true, gates: ['test'], at: 'x' });
 
+    const logSpy = vi.mocked(console.log);
     await runAdvance({ cwd: tmpDir, task: '1.1' });
 
     expect(process.exitCode).toBe(1);
+    const output = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(output).toMatch(/stale/);
+    expect(output).toMatch(/agent-flow gate --task 1\.1/);
+  });
+
+  it('treats a corrupt or non-object cache file as an empty map', async () => {
+    const file = path.join(tmpDir, '.agent-flow/gate-cache.json');
+    await fs.ensureDir(path.dirname(file));
+    await fs.writeFile(file, '{not json');
+    expect(await readGateCache(tmpDir, '1.1')).toBeNull();
+    await writeGateCache(tmpDir, { task: '1.1', signature: 's', ok: true, gates: [], at: 'x' });
+    expect((await readGateCache(tmpDir, '1.1'))?.ok).toBe(true);
+
+    await fs.writeFile(file, '[1,2]');
+    expect(await readGateCache(tmpDir, '1.1')).toBeNull();
+    await fs.writeFile(file, '"str"');
+    expect(await readGateCache(tmpDir, '1.1')).toBeNull();
+  });
+
+  it('concurrent writeGateCache calls keep every record and leave no lock or temp files', async () => {
+    const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
+    await Promise.all(
+      ids.map((id) => writeGateCache(tmpDir, { task: id, signature: `sig-${id}`, ok: true, gates: ['test'], at: 'x' })),
+    );
+    for (const id of ids) {
+      expect((await readGateCache(tmpDir, id))?.signature).toBe(`sig-${id}`);
+    }
+    const left = await fs.readdir(path.join(tmpDir, '.agent-flow'));
+    expect(left.filter((f) => f.endsWith('.lock') || f.endsWith('.tmp'))).toEqual([]);
   });
 
   it('reads a legacy single-record cache as a one-entry map', async () => {

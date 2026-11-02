@@ -175,6 +175,7 @@ describe('init --codex', () => {
     const gitignore = await fs.readFile(path.join(tmpDir, '.gitignore'), 'utf8');
     expect(gitignore).toContain('.claude/settings.local.json');
     expect(gitignore).toContain('.agent-flow/memory.db');
+    expect(gitignore).toContain('.agent-flow/gate-cache.json.lock');
     expect(await missingGitignoreEntries(tmpDir)).toEqual([]);
   });
 

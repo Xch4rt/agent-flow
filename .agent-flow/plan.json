@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "milestone": "v0.11 — evidence and tuning",
   "createdAt": "2026-10-31T22:57:20.769Z",
-  "updatedAt": "2026-11-02T05:17:47.589Z",
+  "updatedAt": "2026-11-02T05:21:38.395Z",
   "cursor": {
-    "phase": "2c",
-    "task": "2c.2"
+    "phase": "3",
+    "task": "3.1"
   },
   "phases": [
     {
@@ -364,7 +364,7 @@
       "dependsOn": [
         "2b"
       ],
-      "status": "active",
+      "status": "done",
       "tasks": [
         {
           "id": "2c.1",
@@ -416,7 +416,7 @@
           ],
           "wave": 1,
           "dependsOn": [],
-          "status": "active",
+          "status": "done",
           "gates": [
             "test",
             "typecheck"

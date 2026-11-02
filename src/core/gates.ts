@@ -220,12 +220,57 @@ async function readGateCacheFile(root: string): Promise<GateCacheFile> {
   }
 }
 
+const LOCK_RETRY_MS = 25;
+const LOCK_WAIT_MS = 2000;
+const LOCK_STALE_MS = 10_000;
+
+async function acquireLock(lockFile: string): Promise<void> {
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  for (;;) {
+    try {
+      const handle = await fs.open(lockFile, 'wx');
+      await fs.close(handle);
+      return;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      try {
+        const stat = await fs.stat(lockFile);
+        if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
+          await fs.remove(lockFile);
+          continue;
+        }
+      } catch {
+        continue; // lock vanished between open and stat: retry now
+      }
+      if (Date.now() > deadline) {
+        // Waited long enough: break the lock rather than lose the record.
+        await fs.remove(lockFile);
+        continue;
+      }
+      await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_MS));
+    }
+  }
+}
+
 export async function writeGateCache(root: string, cache: GateCache): Promise<void> {
   const file = gateCachePath(root);
-  const all = await readGateCacheFile(root);
-  all[cache.task] = cache;
+  const lockFile = `${file}.lock`;
   await fs.ensureDir(path.dirname(file));
-  await fs.writeJson(file, all, { spaces: 2 });
+  await acquireLock(lockFile);
+  try {
+    // Re-read inside the lock so concurrent writers never drop each other's entry.
+    const all = await readGateCacheFile(root);
+    all[cache.task] = cache;
+    const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+    try {
+      await fs.writeJson(tmp, all, { spaces: 2 });
+      await fs.rename(tmp, file);
+    } finally {
+      await fs.remove(tmp);
+    }
+  } finally {
+    await fs.remove(lockFile);
+  }
 }
 
 export async function readGateCache(root: string, taskId: string): Promise<GateCache | null> {
