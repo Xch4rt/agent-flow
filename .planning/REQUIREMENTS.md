@@ -8,6 +8,7 @@ usage, and onboarding understands more projects.
 
 - **DOG-01**: This repository uses agent-flow for its own work: planning files, memory, skills for both runtimes and the plan are committed, and `agent-flow doctor` is green.
 - **DOG-02**: Friction found while using agent-flow on itself is recorded as memory (events, errors) or open questions, not lost in chat.
+- **DOG-03**: Bugs found by dogfooding that break the loop itself are fixed in the same milestone: the gate cache keeps one result per task so `next --wave` fan-out can gate several tasks before advancing them, and init ignores every SQLite side file of the memory index.
 
 ## Benchmark
 

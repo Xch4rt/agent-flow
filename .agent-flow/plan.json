@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "milestone": "v0.11 — evidence and tuning",
   "createdAt": "2026-10-31T22:57:20.769Z",
-  "updatedAt": "2026-11-02T05:13:50.037Z",
+  "updatedAt": "2026-11-02T05:16:18.808Z",
   "cursor": {
-    "phase": "2b",
-    "task": "2b.1"
+    "phase": "2c",
+    "task": "2c.1"
   },
   "phases": [
     {
@@ -272,7 +272,7 @@
       "dependsOn": [
         "2"
       ],
-      "status": "active",
+      "status": "done",
       "tasks": [
         {
           "id": "2b.1",
@@ -283,7 +283,7 @@
           ],
           "wave": 1,
           "dependsOn": [],
-          "status": "active",
+          "status": "done",
           "gates": [
             "test",
             "typecheck"
@@ -351,6 +351,84 @@
             }
           ],
           "waives": []
+        }
+      ]
+    },
+    {
+      "id": "2c",
+      "title": "Loop fixes found by dogfooding",
+      "goal": "Wave fan-out and the generated .gitignore work as documented.",
+      "requirements": [
+        "DOG-03"
+      ],
+      "dependsOn": [
+        "2b"
+      ],
+      "status": "pending",
+      "tasks": [
+        {
+          "id": "2c.1",
+          "title": "Gate cache keyed per task so a wave can be gated before it is advanced",
+          "scope": [
+            "src/core/gates.ts",
+            "src/commands/orchestrate.ts",
+            "test/orchestration.test.ts",
+            "test/fanout.test.ts"
+          ],
+          "wave": 1,
+          "dependsOn": [],
+          "status": "pending",
+          "gates": [
+            "test",
+            "typecheck"
+          ],
+          "acceptance": [
+            {
+              "id": "A1",
+              "text": ".agent-flow/gate-cache.json stores one record per task id; gating task B no longer discards task A's green result",
+              "proof": "test"
+            },
+            {
+              "id": "A2",
+              "text": "advance still refuses when the task's own cached signature does not match the current worktree",
+              "proof": "test"
+            },
+            {
+              "id": "A3",
+              "text": "A legacy single-record cache file is read as a one-entry map (no crash, no stale pass)",
+              "proof": "test"
+            },
+            {
+              "id": "A4",
+              "text": "Integration: gate A, gate B, advance A, advance B succeeds for two scope-disjoint tasks in one wave",
+              "proof": "test"
+            }
+          ],
+          "waives": []
+        },
+        {
+          "id": "2c.2",
+          "title": "init ignores every SQLite side file of the memory index",
+          "scope": [
+            "src/core/claude-settings.ts",
+            "test/init.test.ts"
+          ],
+          "wave": 1,
+          "dependsOn": [],
+          "status": "pending",
+          "gates": [
+            "test",
+            "typecheck"
+          ],
+          "acceptance": [
+            {
+              "id": "A1",
+              "text": "GITIGNORE_ENTRIES ignores .agent-flow/memory.db-shm and .agent-flow/memory.db-wal (or a pattern covering them) and missingGitignoreEntries treats a .gitignore that already has only memory.db as missing them",
+              "proof": "test"
+            }
+          ],
+          "waives": [],
+          "tier": "light"
         }
       ]
     },
@@ -466,7 +544,8 @@
       "dependsOn": [
         "2",
         "3",
-        "2b"
+        "2b",
+        "2c"
       ],
       "status": "pending",
       "tasks": [
