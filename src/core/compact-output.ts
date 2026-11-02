@@ -7,7 +7,7 @@
  * keep the full log on disk for the rare case it is needed.
  */
 
-export type ToolKind = 'vitest' | 'jest' | 'tsc' | 'eslint' | 'pytest' | 'node-test' | 'generic';
+export type ToolKind = 'vitest' | 'jest' | 'tsc' | 'eslint' | 'pytest' | 'node-test' | 'go-test' | 'cargo-test' | 'ruff' | 'rustc' | 'generic';
 
 export type CompactOutput = {
   tool: ToolKind;
@@ -160,7 +160,118 @@ function parseNodeTest(lines: string[]): Omit<CompactOutput, 'tail'> | null {
   return { tool: 'node-test', failures, summary };
 }
 
-const PARSERS: Array<(lines: string[]) => Omit<CompactOutput, 'tail'> | null> = [parseNodeTest, parsePytest, parseJest, parseVitest, parseEslint, parseTsc];
+function parseGoTest(lines: string[]): Omit<CompactOutput, 'tail'> | null {
+  const isPkg = (l: string) => /^(ok|FAIL)\s+\S+\s+(\(cached\)|[\d.]+s)/.test(l);
+  if (!lines.some((l) => /^\s*--- (FAIL|PASS|SKIP): /.test(l) || isPkg(l) || /^=== RUN\s/.test(l))) return null;
+  const failures: string[] = [];
+  const indent = (l: string) => /^\s*/.exec(l)![0].length;
+  for (let i = 0; i < lines.length; i += 1) {
+    const m = /^(\s*)--- FAIL: (\S+)/.exec(lines[i]);
+    if (!m) continue;
+    let where = '';
+    let why = '';
+    let hasChild = false;
+    for (let j = i + 1; j < lines.length; j += 1) {
+      const line = lines[j];
+      const sub = /^(\s*)--- (FAIL|PASS|SKIP): /.exec(line);
+      if (sub) {
+        if (sub[1].length > m[1].length && sub[2] === 'FAIL') hasChild = true;
+        if (sub[1].length <= m[1].length || sub[2] === 'FAIL') break;
+        continue;
+      }
+      if (!line.trim() || (indent(line) <= m[1].length && !/^=== /.test(line))) break;
+      const loc = /^\s+(\S+\.go):(\d+):\s*(.*)$/.exec(line);
+      if (loc && !where) {
+        where = `${loc[1]}:${loc[2]}`;
+        why = loc[3];
+      }
+    }
+    // go test -v prints the log lines before the '--- FAIL' line, up to the matching '=== RUN'.
+    for (let j = i - 1; j >= 0 && !where; j -= 1) {
+      if (/^\s*(=== |--- )/.test(lines[j])) break;
+      const loc = /^\s+(\S+\.go):(\d+):\s*(.*)$/.exec(lines[j]);
+      if (loc) {
+        where = `${loc[1]}:${loc[2]}`;
+        why = loc[3];
+      }
+    }
+    if (hasChild && !where) continue;
+    failures.push(clip(`${m[2]}${where ? ` (${where})` : ''} — ${why || 'failed'}`));
+  }
+  const pkgOk = lines.filter((l) => /^ok\s+\S+\s+(\(cached\)|[\d.]+s)/.test(l)).length;
+  const pkgFail = lines.filter((l) => /^FAIL\s+\S+\s+[\d.]+s/.test(l)).length;
+  let summary: string;
+  if (pkgOk + pkgFail > 0) summary = `${pkgOk} package(s) passed, ${pkgFail} failed`;
+  else {
+    const top = (kind: string) => lines.filter((l) => new RegExp(`^--- ${kind}: `).test(l)).length;
+    summary = `${top('PASS')} passed, ${top('FAIL')} failed`;
+  }
+  return { tool: 'go-test', failures, summary };
+}
+
+function parseCargoTest(lines: string[]): Omit<CompactOutput, 'tail'> | null {
+  const results = lines.filter((l) => /^test result: /.test(l));
+  if (results.length === 0 && !lines.some((l) => /^test \S+ \.\.\. (ok|FAILED|ignored)/.test(l))) return null;
+  const panics = new Map<string, string>();
+  for (let i = 0; i < lines.length; i += 1) {
+    const block = /^---- (\S+) stdout ----$/.exec(lines[i]);
+    if (!block) continue;
+    for (let j = i + 1; j < Math.min(lines.length, i + 30); j += 1) {
+      if (/^---- /.test(lines[j])) break;
+      const nu = /panicked at (\S+?:\d+:\d+):?\s*$/.exec(lines[j]);
+      const old = /panicked at '(.*)', (\S+?:\d+:\d+)\s*$/.exec(lines[j]);
+      if (nu) {
+        const msg = lines.slice(j + 1, j + 4).find((l) => l.trim() && !/^note:/.test(l.trim())) ?? '';
+        panics.set(block[1], `${nu[1]}|${msg.trim()}`);
+        break;
+      }
+      if (old) {
+        panics.set(block[1], `${old[2]}|${old[1]}`);
+        break;
+      }
+    }
+  }
+  const failures: string[] = [];
+  for (const line of lines) {
+    const m = /^test (\S+) \.\.\. FAILED/.exec(line);
+    if (!m) continue;
+    const [where, why] = (panics.get(m[1]) ?? '').split('|');
+    failures.push(clip(`${m[1]}${where ? ` (${where})` : ''} — ${why || 'failed'}`));
+  }
+  const summary = (results.find((l) => !/ 0 failed/.test(l)) ?? results[results.length - 1])?.replace(/^test result:\s*/, '').trim();
+  return { tool: 'cargo-test', failures, summary };
+}
+
+function parseRuff(lines: string[]): Omit<CompactOutput, 'tail'> | null {
+  const failures: string[] = [];
+  for (const line of lines) {
+    const m = /^(\S[^:]*\.pyi?):(\d+):(\d+): ([A-Z]{1,4}\d{2,4}) (?:\[\*\] )?(.*)$/.exec(line);
+    if (m) failures.push(clip(`${m[1]}:${m[2]} ${m[4]} — ${m[5]}`));
+  }
+  if (failures.length === 0) return null;
+  const summary = lines.find((l) => /^Found \d+ errors?/.test(l))?.trim() ?? `Found ${failures.length} error(s).`;
+  return { tool: 'ruff', failures, summary };
+}
+
+function parseRustc(lines: string[]): Omit<CompactOutput, 'tail'> | null {
+  const failures: string[] = [];
+  let warnings = 0;
+  let found = false;
+  for (let i = 0; i < lines.length; i += 1) {
+    const m = /^(error|warning)(?:\[(E\d+)\])?: (.+)$/.exec(lines[i]);
+    if (!m) continue;
+    const arrow = /^\s*--> (\S+?:\d+:\d+)\s*$/.exec(lines[i + 1] ?? '');
+    if (!arrow) continue;
+    found = true;
+    if (m[1] === 'warning') warnings += 1;
+    else failures.push(clip(`${arrow[1]}${m[2] ? ` ${m[2]}` : ''} — ${m[3]}`));
+  }
+  if (!found) return null;
+  const summary = `${failures.length} error(s), ${warnings} warning(s)`;
+  return { tool: 'rustc', failures, summary };
+}
+
+const PARSERS: Array<(lines: string[]) => Omit<CompactOutput, 'tail'> | null> = [parseNodeTest, parsePytest, parseJest, parseVitest, parseEslint, parseTsc, parseCargoTest, parseGoTest, parseRuff, parseRustc];
 
 export function compactOutput(raw: string, options: { tailLines?: number } = {}): CompactOutput {
   const text = stripAnsi(raw);

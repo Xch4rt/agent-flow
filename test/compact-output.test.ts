@@ -117,3 +117,94 @@ describe('agent-flow run', () => {
     expect(result.outputTail).not.toContain('Object.is equality\n\n');
   });
 });
+
+describe('compactOutput: go, cargo, ruff, rustc', () => {
+  it('go test -v: failing test with file:line, package summary', () => {
+    const out = compactOutput(
+      [
+        '=== RUN   TestAdd',
+        '--- PASS: TestAdd (0.00s)',
+        '=== RUN   TestSub',
+        '    math_test.go:12: expected 1, got 2',
+        '--- FAIL: TestSub (0.00s)',
+        'FAIL',
+        'FAIL\texample.com/m\t0.003s',
+        'ok  \texample.com/other\t0.002s',
+        'FAIL',
+      ].join('\n'),
+    );
+    expect(out.tool).toBe('go-test');
+    expect(out.failures).toEqual(['TestSub (math_test.go:12) — expected 1, got 2']);
+    expect(out.summary).toBe('1 package(s) passed, 1 failed');
+  });
+
+  it('go test plain with subtests reports the leaf only', () => {
+    const out = compactOutput(
+      ['--- FAIL: TestP (0.00s)', '    --- FAIL: TestP/sub (0.00s)', '        p_test.go:7: bad value', 'FAIL', 'FAIL\texample.com/m\t0.01s'].join('\n'),
+    );
+    expect(out.failures).toEqual(['TestP/sub (p_test.go:7) — bad value']);
+  });
+
+  it('cargo test: panic location and message', () => {
+    const out = compactOutput(
+      [
+        'running 2 tests',
+        'test tests::ok_one ... ok',
+        'test tests::bad ... FAILED',
+        '',
+        'failures:',
+        '',
+        '---- tests::bad stdout ----',
+        "thread 'tests::bad' panicked at src/lib.rs:10:5:",
+        'assertion `left == right` failed',
+        '  left: 1',
+        ' right: 2',
+        'note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace',
+        '',
+        'failures:',
+        '    tests::bad',
+        '',
+        'test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s',
+      ].join('\n'),
+    );
+    expect(out.tool).toBe('cargo-test');
+    expect(out.failures).toEqual(['tests::bad (src/lib.rs:10:5) — assertion `left == right` failed']);
+    expect(out.summary).toContain('1 passed; 1 failed');
+  });
+
+  it('ruff check: one failure per line', () => {
+    const out = compactOutput(
+      ['src/a.py:1:8: F401 [*] `os` imported but unused', 'src/b.py:10:1: E501 Line too long (120 > 88)', 'Found 2 errors.', '[*] 1 fixable with the `--fix` option.'].join('\n'),
+    );
+    expect(out.tool).toBe('ruff');
+    expect(out.failures).toEqual(['src/a.py:1 F401 — `os` imported but unused', 'src/b.py:10 E501 — Line too long (120 > 88)']);
+    expect(out.summary).toBe('Found 2 errors.');
+  });
+
+  it('clippy/rustc: errors listed, warnings only counted', () => {
+    const out = compactOutput(
+      [
+        'warning: unused variable: `x`',
+        ' --> src/main.rs:2:9',
+        '  |',
+        '2 |     let x = 1;',
+        '',
+        'error[E0308]: mismatched types',
+        ' --> src/main.rs:3:5',
+        '  |',
+        '3 |     "a"',
+        '',
+        'error: aborting due to 1 previous error; 1 warning emitted',
+      ].join('\n'),
+    );
+    expect(out.tool).toBe('rustc');
+    expect(out.failures).toEqual(['src/main.rs:3:5 E0308 — mismatched types']);
+    expect(out.summary).toBe('1 error(s), 1 warning(s)');
+  });
+
+  it('existing tools keep winning and unrelated output stays generic', () => {
+    expect(compactOutput(fixture('pytest.txt')).tool).toBe('pytest');
+    expect(compactOutput(fixture('tsc.txt')).tool).toBe('tsc');
+    expect(compactOutput('hello\nworld\n').tool).toBe('generic');
+  });
+});

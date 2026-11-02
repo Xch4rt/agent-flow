@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runInit } from '../src/commands/init.js';
 import { runOnboard } from '../src/commands/onboard.js';
-import { getOnboardingState, onboardEndMarker, onboardStartMarker } from '../src/core/onboard.js';
+import { getOnboardingState, inspectRepository, onboardEndMarker, onboardStartMarker } from '../src/core/onboard.js';
 
 let tmpDir: string;
 
@@ -115,5 +115,45 @@ describe('onboard workspaces and test runner', () => {
 
     const lines = vi.mocked(console.log).mock.calls.map((call) => String(call[0]));
     expect(lines.find((line) => line.includes('Test runner:'))).toContain('vitest');
+  });
+});
+
+describe('onboard Go, Rust and Python repositories', () => {
+  it('lists Go manifests and directories as important without a package manager risk', async () => {
+    await fs.writeFile(path.join(tmpDir, 'go.mod'), 'module example.com/app\n\ngo 1.22\n');
+    await fs.writeFile(path.join(tmpDir, 'go.sum'), '');
+    await fs.ensureDir(path.join(tmpDir, 'cmd'));
+    await fs.ensureDir(path.join(tmpDir, 'internal'));
+
+    const inspection = await inspectRepository(tmpDir);
+
+    expect(inspection.importantFiles).toEqual(expect.arrayContaining(['go.mod', 'go.sum']));
+    expect(inspection.importantDirectories).toEqual(expect.arrayContaining(['cmd', 'internal']));
+    expect(inspection.risks).not.toContain('Package manager not detected.');
+  });
+
+  it('lists Rust manifests and directories as important without a package manager risk', async () => {
+    await fs.writeFile(path.join(tmpDir, 'Cargo.toml'), '[package]\nname = "app"\nversion = "0.1.0"\n');
+    await fs.writeFile(path.join(tmpDir, 'Cargo.lock'), '');
+    await fs.ensureDir(path.join(tmpDir, 'crates'));
+    await fs.ensureDir(path.join(tmpDir, 'src'));
+
+    const inspection = await inspectRepository(tmpDir);
+
+    expect(inspection.importantFiles).toEqual(expect.arrayContaining(['Cargo.toml', 'Cargo.lock']));
+    expect(inspection.importantDirectories).toEqual(expect.arrayContaining(['crates', 'src']));
+    expect(inspection.risks).not.toContain('Package manager not detected.');
+  });
+
+  it('lists Python lockfiles, setup files and Makefile as important', async () => {
+    const files = ['pyproject.toml', 'uv.lock', 'poetry.lock', 'Pipfile', 'setup.py', 'setup.cfg', 'Makefile'];
+    for (const file of files) await fs.writeFile(path.join(tmpDir, file), '');
+    await fs.ensureDir(path.join(tmpDir, 'pkg'));
+    await fs.ensureDir(path.join(tmpDir, 'tests'));
+
+    const inspection = await inspectRepository(tmpDir);
+
+    expect(inspection.importantFiles).toEqual(expect.arrayContaining(files));
+    expect(inspection.importantDirectories).toEqual(expect.arrayContaining(['pkg', 'tests']));
   });
 });

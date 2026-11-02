@@ -45,6 +45,27 @@ function makePlan(tasks: Task[]): Plan {
 }
 
 describe('pitfall packs', () => {
+  it('keeps the randomness/crypto-random criterion language-neutral and matching', () => {
+    const task = makeTask({ title: 'Generate session tokens', scope: ['internal/session/token.go'] });
+    const [gap] = hardeningGaps(task).filter((g) => g.key === 'randomness/crypto-random');
+
+    expect(gap).toBeDefined();
+    for (const needle of ['CSPRNG', 'crypto.randomBytes', 'secrets', 'crypto/rand', 'getrandom']) {
+      expect(gap.text).toContain(needle);
+    }
+    expect(matchPacks(makeTask({ title: 'Use crypto/rand for ids' })).map((p) => p.id)).toContain('randomness');
+  });
+
+  it('treats Go, Python and Rust secure-random wording as covering the criterion', () => {
+    for (const text of ['ids come from crypto/rand', 'tokens use secrets.token_urlsafe', 'uses getrandom via OsRng']) {
+      const task = makeTask({
+        title: 'Generate tokens',
+        acceptance: [{ id: 'H1', text, proof: 'test' }],
+      });
+      expect(hardeningGaps(task).map((g) => g.key)).not.toContain('randomness/crypto-random');
+    }
+  });
+
   it('matches the http-api pack via scope, gates, or keywords', () => {
     expect(matchPacks(makeTask({ scope: ['src/server.js'] })).map((p) => p.id)).toContain('http-api');
     expect(matchPacks(makeTask({ gates: ['smoke'] })).map((p) => p.id)).toContain('http-api');

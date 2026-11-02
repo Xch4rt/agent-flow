@@ -11,7 +11,7 @@ usage, and onboarding understands more projects.
 
 ## Benchmark
 
-- **BENCH-01**: At least three bench tasks of distinct domains (HTTP API + persistence, a CLI, a refactor of existing code), each with a seed repo, a task prompt and hidden acceptance tests.
+- **BENCH-01**: At least three bench tasks of distinct domains (HTTP API + persistence, a CLI, a refactor of existing code), at least one of them not in Node, each with a seed repo, a task prompt and hidden acceptance tests.
 - **BENCH-02**: Published results in `docs/bench-results.md`: medians per task for `plain`, `gsd` and `agent-flow`, in Claude Code and Codex, with pass rate, tokens (input-eq), cache reads, peak context and wall time, plus the exact commands to reproduce them.
 
 ## Router feedback
@@ -24,6 +24,8 @@ usage, and onboarding understands more projects.
 - **DETECT-01**: Node and TypeScript projects without a known framework are detected as such (language, TypeScript, test runner: vitest / jest / node:test, lint and typecheck commands) instead of "none".
 - **DETECT-02**: Python (pyproject / requirements), Go (go.mod) and Rust (Cargo.toml) projects are detected with their test, lint and build commands.
 - **DETECT-03**: Monorepo workspaces (pnpm-workspace, npm/yarn workspaces, turbo) are listed as packages with their own commands in PROJECT.md and the context pack.
+- **DETECT-04**: `agent-flow run` and the gates print `file:line — reason` failures for `go test`, `cargo test`, ruff and clippy/rustc, not only for the Node and pytest tools.
+- **DETECT-05**: Onboarding treats Go, Rust and Python manifests, lockfiles and layout directories as important files; pack wording uses language-neutral examples.
 
 ## Non-Goals
 
