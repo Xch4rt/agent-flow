@@ -61,8 +61,9 @@ async function rollout(day: string, stamp: string, id: string, rows: unknown[], 
   await fs.ensureDir(path.dirname(file));
   if (ext.endsWith('.zst')) {
     const compress = (zlib as typeof zlib & { zstdCompressSync?: (b: Buffer) => Buffer }).zstdCompressSync;
-    if (!compress) return file;
-    await fs.writeFile(file, compress(Buffer.from(text)));
+    // Node < 22.15 cannot compress either: write a stub with the zstd magic so the
+    // file exists and is counted as a skipped compressed rollout.
+    await fs.writeFile(file, compress ? compress(Buffer.from(text)) : Buffer.from([0x28, 0xb5, 0x2f, 0xfd]));
   } else {
     await fs.writeFile(file, text);
   }

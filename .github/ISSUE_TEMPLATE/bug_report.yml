@@ -1,0 +1,46 @@
+name: Bug report
+description: Something in agent-flow does not behave as documented.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: agent-flow version
+      description: Output of `agent-flow --version`
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Agent runtime
+      options: [Claude Code, Codex, Both, Not relevant]
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Commands in order, in a fresh directory when possible.
+      placeholder: |
+        agent-flow init --claude
+        agent-flow onboard
+        agent-flow gate --task 1.1
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: Paste the command output. `agent-flow doctor` output helps too.
+      render: text
+  - type: input
+    id: env
+    attributes:
+      label: OS and Node version
+      placeholder: macOS 15, Node 22.14
