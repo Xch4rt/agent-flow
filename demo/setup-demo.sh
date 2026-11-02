@@ -192,4 +192,19 @@ Read src/slug.js and test/slug.test.js. Both criteria are genuinely satisfied: r
 {"verdict":"pass","notes":"Both acceptance criteria verified against the code; tests are genuine","findings":[]}
 EOF
 
+# --- 4. hero: 40-second cut of the loop, review tier 0 so advance closes ----
+# Same story as the daily loop (buggy first attempt, real red gate, fix, close)
+# without the review handoff. Reuses /tmp/afdemo-loop-fix/slug.js.
+rm -rf /tmp/afdemo-hero
+cp -R /tmp/afdemo-loop /tmp/afdemo-hero
+cd /tmp/afdemo-hero
+rm -f reviewer-verdict.txt
+node -e "
+const fs = require('fs');
+const cfg = JSON.parse(fs.readFileSync('.agent-flow/config.json', 'utf8'));
+cfg.orchestration.review = { tier: 0 };
+fs.writeFileSync('.agent-flow/config.json', JSON.stringify(cfg, null, 2));
+"
+git add -A && git -c user.email=demo@demo -c user.name=demo commit -qm "chore: review tier 0 for the hero cut"
+
 echo "demo fixtures ready"

@@ -162,4 +162,25 @@ Typical use: a server task waives `persistence` because the store module owns th
 
 ## Benchmark
 
-Building the same project three ways — bare loop, hardened loop, and a research-heavy multi-agent pipeline — the hardened loop matched the heavy pipeline's quality checklist (atomic writes, body caps, redirect cache headers, scheme allowlists, crypto randomness, and more) at **24% of its tokens and ~15% of its wall time**.
+What exists today is one experiment (June 2026), not a benchmark. The reproducible one — `agent-flow bench`, hidden acceptance tests, several runs per workflow and runtime — is planned; until it lands, read the number below with its limits.
+
+**Setup.** The same project, `linklite` (a URL shortener: base62 slugs, JSON persistence, `POST /shorten`, `GET /:slug`; plain Node, ESM, `node:test`, four requirement ids), built three times in Claude Code from the same requirements:
+
+- *agent-flow, bare*: `plan.json` authored by the host, `next --wave` → executors → `gate` → tier-1 `review` → `advance`.
+- *agent-flow, hardened*: same, after `plan validate` (packs flagged 9 gaps at zero tokens) and one hardening agent (`plan harden` → 13 `H<n>` criteria applied, 12.4k tokens, 19.5s).
+- *GSD*: new-project → 4 researchers → synthesizer → requirements → roadmap → per phase: planner → plan-checker → TDD executor → verifier (2 phases).
+
+**How quality was measured.** A 10-item hardening checklist checked against the final code: http/https allowlist, body cap with explicit 413, `Cache-Control: no-store` on the 301, write-to-temp-then-rename, serialized concurrent writes, crypto-grade randomness without modulo bias, CR/LF guard on `Location`, malformed slug → 404 without touching the store, corrupt JSON fails loud, bounded collision retry. Plus the test suite and a live boot: `POST` → slug → `GET` → 301, and `javascript:` → 400.
+
+| | agent-flow, bare | agent-flow, hardened | GSD |
+| --- | --- | --- | --- |
+| Hardening checklist | 2/10 | **10/10** | 7.5/10 |
+| Tests | 16/16 | 28/28 | 24/24 |
+| Subagents | 5 | 6 | 11 |
+| Subagent tokens (as reported by Claude Code) | ~90k | **~116k** | ~475k |
+| Agent wall time | ~6 min | **~8.3 min** | ~55 min |
+| Acceptance criteria | 10 | 23 (10 + 13 H) | ~16 equivalent |
+
+The hardened loop covered the four gaps the bare loop had shipped (atomic writes, write queue, body cap, redirect cache header) and added four that GSD's pipeline missed (CRLF injection guard, slug-format guard, corrupt-file fail-loud, unbiased randomness — the last one was a finding of GSD's own reviewer that its pipeline did not fix). That is the origin of "24% of the tokens and ~15% of the wall time": 116k vs 475k, 8.3 vs 55 minutes.
+
+**Limits.** One task in one domain. One run per workflow, so no variance. The plan was authored by the tool's author. No hidden acceptance tests: quality was scored by hand against the checklist. Token counts are the per-subagent totals Claude Code reported, not API-billed usage (`agent-flow usage` did not exist yet), and the models per run were not recorded. GSD's pipeline also produces things the loop does not (broad domain research, full process documentation, goal-backward verification), which the checklist does not value. Treat the result as a reason to run the benchmark, not as its conclusion.
