@@ -175,6 +175,15 @@ describe('init --codex', () => {
     const gitignore = await fs.readFile(path.join(tmpDir, '.gitignore'), 'utf8');
     expect(gitignore).toContain('.claude/settings.local.json');
     expect(gitignore).toContain('.agent-flow/memory.db');
+    expect(gitignore).toContain('.agent-flow/gate-cache.json.lock');
     expect(await missingGitignoreEntries(tmpDir)).toEqual([]);
+  });
+
+  it('reports the SQLite WAL side files as missing when .gitignore only has memory.db', async () => {
+    await fs.writeFile(path.join(tmpDir, '.gitignore'), '.agent-flow/memory.db\n');
+    const missing = await missingGitignoreEntries(tmpDir);
+    expect(missing).toContain('.agent-flow/memory.db-shm');
+    expect(missing).toContain('.agent-flow/memory.db-wal');
+    expect(missing).not.toContain('.agent-flow/memory.db');
   });
 });

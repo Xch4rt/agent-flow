@@ -3,7 +3,7 @@
 > Generated from `.agent-flow/plan.json` by `agent-flow plan render`. Edit the plan, not this file.
 
 **Milestone:** v0.11 — evidence and tuning
-**Progress:** 5/11 tasks (45%), 2/4 phases
+**Progress:** 9/15 tasks (60%), 4/6 phases
 
 ## Phase 1: Dogfood: agent-flow runs on itself — done
 **Goal:** The repo is planned, remembered and gated with its own loop; the first friction found is fixed.
@@ -41,6 +41,35 @@
   - A3 [test]: A context pack for a task whose scope lies inside one package names that package and its commands first
   - A4 [test]: The detected test runner (vitest / jest / node:test / mocha) is printed by status and onboard and written to PROJECT.md and AGENTS.md generated sections
 
+## Phase 2b: Beyond Node: compact output and onboarding for Go, Rust and Python — done
+**Goal:** A Go, Rust or Python team gets the same token savings and onboarding quality as a Node team.
+**Requirements:** DETECT-04, DETECT-05
+**Depends on:** 2
+
+- [x] 2b.1 (wave 1) Compact output parsers for go test, cargo test, ruff and clippy/rustc — done
+  - A1 [test]: go test (plain and -v) output yields one failure per failing test with file:line and message from the '--- FAIL: Name' block and its 'file_test.go:12: msg' lines; summary counts passed/failed packages or tests
+  - A2 [test]: cargo test output yields one failure per 'test name ... FAILED' with the 'panicked at src/file.rs:10:5' location and message; summary from the 'test result:' line
+  - A3 [test]: ruff check output ('path:line:col: CODE message') yields one failure per line with file:line and 'CODE message'; summary with the count
+  - A4 [test]: cargo clippy / rustc diagnostics ('error[E0308]: msg' followed by '--> src/file.rs:3:5') yield one failure per error with file:line; warnings are counted in the summary but not listed as failures
+  - A5 [test]: ToolKind gains 'go-test', 'cargo-test', 'ruff', 'rustc'; parser order keeps existing tools' tests green and the generic tail fallback unchanged
+- [x] 2b.2 (wave 1) Onboarding important files for Go, Rust, Python; language-neutral pack wording — done
+  - A1 [test]: go.mod, go.sum, Cargo.toml, Cargo.lock, uv.lock, poetry.lock, Pipfile, setup.py, setup.cfg and Makefile are important-file candidates; cmd, internal, pkg, crates and tests are important-directory candidates
+  - A2 [test]: A Go fixture (go.mod + cmd/ + internal/) onboards with go.mod and cmd listed as important and no 'Package manager not detected' risk; a Rust fixture likewise with Cargo.toml
+  - A3 [test]: The randomness pack criterion names the property (CSPRNG) with examples for Node, Python, Go and Rust instead of only crypto.randomBytes / Math.random; existing harden tests still match by criterion id
+
+## Phase 2c: Loop fixes found by dogfooding — done
+**Goal:** Wave fan-out and the generated .gitignore work as documented.
+**Requirements:** DOG-03
+**Depends on:** 2b
+
+- [x] 2c.1 (wave 1) Gate cache keyed per task so a wave can be gated before it is advanced — done
+  - A1 [test]: .agent-flow/gate-cache.json stores one record per task id; gating task B no longer discards task A's green result
+  - A2 [test]: advance still refuses when the task's own cached signature does not match the current worktree
+  - A3 [test]: A legacy single-record cache file is read as a one-entry map (no crash, no stale pass)
+  - A4 [test]: Integration: gate A, gate B, advance A, advance B succeeds for two scope-disjoint tasks in one wave
+- [x] 2c.2 (wave 1) init ignores every SQLite side file of the memory index — done
+  - A1 [test]: GITIGNORE_ENTRIES ignores .agent-flow/memory.db-shm and .agent-flow/memory.db-wal (or a pattern covering them) and missingGitignoreEntries treats a .gitignore that already has only memory.db as missing them
+
 ## Phase 3: Router feedback from observed usage — pending
 **Goal:** Judge the router from what tasks actually cost and how often they passed first time; suggest, never apply.
 **Requirements:** ROUTER-01, ROUTER-02
@@ -59,7 +88,7 @@
 ## Phase 4: Published benchmark — pending
 **Goal:** The 24% claim becomes a reproducible table across three tasks, three workflows and both runtimes.
 **Requirements:** BENCH-01, BENCH-02
-**Depends on:** 2, 3
+**Depends on:** 2, 3, 2b, 2c
 
 - [ ] 4.1 (wave 1) Bench task: HTTP API + persistence (linklite) — pending
   - A1 [manual]: Seed repo with package.json and a failing-by-absence feature; task.md asks for POST /shorten and GET /:slug persisted to a JSON file

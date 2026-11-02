@@ -111,13 +111,13 @@ export const BUILTIN_PACKS: PitfallPack[] = [
     id: 'randomness',
     title: 'Identifier/token randomness',
     match: {
-      keywords: /random|slug|token|nonce|uuid|unique id|identifier generation/i,
+      keywords: /random|crypto\/rand|csprng|slug|token|nonce|uuid|unique id|identifier generation/i,
     },
     criteria: [
       {
         id: 'crypto-random',
-        text: 'Generated identifiers/tokens use crypto-grade randomness (crypto.randomBytes / randomUUID), never Math.random.',
-        satisfiedBy: ['crypto.randombytes', 'randombytes', 'randomuuid', 'crypto-grade', 'csprng', 'getrandomvalues', 'not math.random'],
+        text: 'Generated identifiers/tokens use a cryptographically secure random source (CSPRNG), never a seeded or general-purpose PRNG. Examples: Node crypto.randomBytes / randomUUID (not Math.random), Python secrets / os.urandom (not random), Go crypto/rand (not math/rand), Rust getrandom / rand::rngs::OsRng (not a seeded StdRng).',
+        satisfiedBy: ['crypto.randombytes', 'randombytes', 'randomuuid', 'crypto-grade', 'csprng', 'getrandomvalues', 'not math.random', 'crypto/rand', 'secrets.token', 'os.urandom', 'getrandom', 'osrng', 'securerandom'],
       },
     ],
   },

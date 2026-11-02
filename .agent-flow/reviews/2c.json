@@ -1,0 +1,7 @@
+{
+  "phase": "2c",
+  "signature": "18793acdc83b658a4a3a95e3d88ea98f0bd04206fb71051dc18147230c6276c0",
+  "verdict": "pass",
+  "notes": "All five acceptance criteria are met and tested; the cache write is now atomic (tmp + rename) and serialized by a lock with a re-read inside it; 347 tests and tsc are green. | findings: Non-blocking: the lock-break paths (stale after 10s, forced after 2s wait) can let two waiters remove each other's fresh lock. The critical section is a few ms, so the window is tiny and the atomic rename still prevents a torn file.; Non-blocking: a crash between writeJson and rename can leave a gate-cache.json.<pid>.<hex>.tmp file. It is not in GITIGNORE_ENTRIES, but worktreeSignature ignores .agent-flow/, so it cannot affect gating.; Non-blocking: the lock file is also added to the repo's own .gitignore and to GITIGNORE_ENTRIES with a test. This is slightly beyond the written criteria, but it is coherent with the phase.",
+  "at": "2026-11-02T05:21:13.023Z"
+}

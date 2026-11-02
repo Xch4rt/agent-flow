@@ -1,0 +1,7 @@
+{
+  "phase": "2b",
+  "signature": "46e7f3bf80ff6d51b608ddb6a87166fe33b63c3e449470cffa0d556815725efb",
+  "verdict": "pass",
+  "notes": "All 2b.1 (go/cargo/ruff/rustc parsers, ToolKind, parser order) and 2b.2 (candidates, Go/Rust fixtures, CSPRNG pack wording) criteria are met in code and tested; 341 tests green. | findings: note: go test -v with a failing subtest whose log precedes the parent '--- FAIL' line in legacy format can list the parent as well as the leaf (modern Go prints logs inside the block, so low impact).; note: cargo-test parser runs before the rustc parser, so warnings during a cargo test build are not counted in the summary; acceptable.; note: no explicit test for go test plain top-level (non-subtest) failures or old-style cargo panic message, though both behave correctly in ad hoc probes.",
+  "at": "2026-11-02T05:16:13.582Z"
+}

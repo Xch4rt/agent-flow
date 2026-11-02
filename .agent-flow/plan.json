@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "milestone": "v0.11 — evidence and tuning",
   "createdAt": "2026-10-31T22:57:20.769Z",
-  "updatedAt": "2026-11-01T02:27:25.904Z",
+  "updatedAt": "2026-11-02T05:21:38.395Z",
   "cursor": {
     "phase": "3",
     "task": "3.1"
@@ -262,6 +262,178 @@
       ]
     },
     {
+      "id": "2b",
+      "title": "Beyond Node: compact output and onboarding for Go, Rust and Python",
+      "goal": "A Go, Rust or Python team gets the same token savings and onboarding quality as a Node team.",
+      "requirements": [
+        "DETECT-04",
+        "DETECT-05"
+      ],
+      "dependsOn": [
+        "2"
+      ],
+      "status": "done",
+      "tasks": [
+        {
+          "id": "2b.1",
+          "title": "Compact output parsers for go test, cargo test, ruff and clippy/rustc",
+          "scope": [
+            "src/core/compact-output.ts",
+            "test/compact-output.test.ts"
+          ],
+          "wave": 1,
+          "dependsOn": [],
+          "status": "done",
+          "gates": [
+            "test",
+            "typecheck"
+          ],
+          "acceptance": [
+            {
+              "id": "A1",
+              "text": "go test (plain and -v) output yields one failure per failing test with file:line and message from the '--- FAIL: Name' block and its 'file_test.go:12: msg' lines; summary counts passed/failed packages or tests",
+              "proof": "test"
+            },
+            {
+              "id": "A2",
+              "text": "cargo test output yields one failure per 'test name ... FAILED' with the 'panicked at src/file.rs:10:5' location and message; summary from the 'test result:' line",
+              "proof": "test"
+            },
+            {
+              "id": "A3",
+              "text": "ruff check output ('path:line:col: CODE message') yields one failure per line with file:line and 'CODE message'; summary with the count",
+              "proof": "test"
+            },
+            {
+              "id": "A4",
+              "text": "cargo clippy / rustc diagnostics ('error[E0308]: msg' followed by '--> src/file.rs:3:5') yield one failure per error with file:line; warnings are counted in the summary but not listed as failures",
+              "proof": "test"
+            },
+            {
+              "id": "A5",
+              "text": "ToolKind gains 'go-test', 'cargo-test', 'ruff', 'rustc'; parser order keeps existing tools' tests green and the generic tail fallback unchanged",
+              "proof": "test"
+            }
+          ],
+          "waives": []
+        },
+        {
+          "id": "2b.2",
+          "title": "Onboarding important files for Go, Rust, Python; language-neutral pack wording",
+          "scope": [
+            "src/core/onboard.ts",
+            "src/core/packs.ts",
+            "test/onboard.test.ts",
+            "test/harden.test.ts"
+          ],
+          "wave": 1,
+          "dependsOn": [],
+          "status": "done",
+          "gates": [
+            "test",
+            "typecheck"
+          ],
+          "acceptance": [
+            {
+              "id": "A1",
+              "text": "go.mod, go.sum, Cargo.toml, Cargo.lock, uv.lock, poetry.lock, Pipfile, setup.py, setup.cfg and Makefile are important-file candidates; cmd, internal, pkg, crates and tests are important-directory candidates",
+              "proof": "test"
+            },
+            {
+              "id": "A2",
+              "text": "A Go fixture (go.mod + cmd/ + internal/) onboards with go.mod and cmd listed as important and no 'Package manager not detected' risk; a Rust fixture likewise with Cargo.toml",
+              "proof": "test"
+            },
+            {
+              "id": "A3",
+              "text": "The randomness pack criterion names the property (CSPRNG) with examples for Node, Python, Go and Rust instead of only crypto.randomBytes / Math.random; existing harden tests still match by criterion id",
+              "proof": "test"
+            }
+          ],
+          "waives": []
+        }
+      ]
+    },
+    {
+      "id": "2c",
+      "title": "Loop fixes found by dogfooding",
+      "goal": "Wave fan-out and the generated .gitignore work as documented.",
+      "requirements": [
+        "DOG-03"
+      ],
+      "dependsOn": [
+        "2b"
+      ],
+      "status": "done",
+      "tasks": [
+        {
+          "id": "2c.1",
+          "title": "Gate cache keyed per task so a wave can be gated before it is advanced",
+          "scope": [
+            "src/core/gates.ts",
+            "src/commands/orchestrate.ts",
+            "test/orchestration.test.ts",
+            "test/fanout.test.ts"
+          ],
+          "wave": 1,
+          "dependsOn": [],
+          "status": "done",
+          "gates": [
+            "test",
+            "typecheck"
+          ],
+          "acceptance": [
+            {
+              "id": "A1",
+              "text": ".agent-flow/gate-cache.json stores one record per task id; gating task B no longer discards task A's green result",
+              "proof": "test"
+            },
+            {
+              "id": "A2",
+              "text": "advance still refuses when the task's own cached signature does not match the current worktree",
+              "proof": "test"
+            },
+            {
+              "id": "A3",
+              "text": "A legacy single-record cache file is read as a one-entry map (no crash, no stale pass)",
+              "proof": "test"
+            },
+            {
+              "id": "A4",
+              "text": "Integration: gate A, gate B, advance A, advance B succeeds for two scope-disjoint tasks in one wave",
+              "proof": "test"
+            }
+          ],
+          "waives": []
+        },
+        {
+          "id": "2c.2",
+          "title": "init ignores every SQLite side file of the memory index",
+          "scope": [
+            "src/core/claude-settings.ts",
+            "test/init.test.ts",
+            "test/guard.test.ts"
+          ],
+          "wave": 1,
+          "dependsOn": [],
+          "status": "done",
+          "gates": [
+            "test",
+            "typecheck"
+          ],
+          "acceptance": [
+            {
+              "id": "A1",
+              "text": "GITIGNORE_ENTRIES ignores .agent-flow/memory.db-shm and .agent-flow/memory.db-wal (or a pattern covering them) and missingGitignoreEntries treats a .gitignore that already has only memory.db as missing them",
+              "proof": "test"
+            }
+          ],
+          "waives": [],
+          "tier": "light"
+        }
+      ]
+    },
+    {
       "id": "3",
       "title": "Router feedback from observed usage",
       "goal": "Judge the router from what tasks actually cost and how often they passed first time; suggest, never apply.",
@@ -372,7 +544,9 @@
       ],
       "dependsOn": [
         "2",
-        "3"
+        "3",
+        "2b",
+        "2c"
       ],
       "status": "pending",
       "tasks": [

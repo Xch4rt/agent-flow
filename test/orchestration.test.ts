@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runInit } from '../src/commands/init.js';
 import { runNext, runGateCommand, runAdvance } from '../src/commands/orchestrate.js';
 import { execa } from 'execa';
-import { resolveGateCommands, runGates, worktreeSignature } from '../src/core/gates.js';
+import { readGateCache, resolveGateCommands, runGates, worktreeSignature, writeGateCache } from '../src/core/gates.js';
 import { emptyPlan, loadPlan, writePlan } from '../src/core/plan.js';
 import type { Plan } from '../src/core/plan-schema.js';
 
@@ -187,5 +187,87 @@ describe('next / gate / advance loop', () => {
       expect(loaded.plan.phases[0].status).toBe('done');
       expect(loaded.plan.cursor.task).toBeNull();
     }
+  });
+
+  it('keeps one gate record per task: gate A, gate B, advance A, advance B', async () => {
+    await runInit({ codex: true, cwd: tmpDir });
+    await setGates(tmpDir, { test: PASS });
+    const plan = twoTaskPlan();
+    plan.phases[0].tasks[1].dependsOn = [];
+    plan.phases[0].tasks[1].wave = 1;
+    plan.phases[0].tasks[1].scope = ['src/b.ts'];
+    await writePlan(tmpDir, plan);
+    await fs.ensureDir(path.join(tmpDir, 'src'));
+    await fs.writeFile(path.join(tmpDir, 'src/a.ts'), 'export const a = 1;\n');
+    await fs.writeFile(path.join(tmpDir, 'src/b.ts'), 'export const b = 2;\n');
+
+    await runGateCommand({ cwd: tmpDir, task: '1.1' });
+    await runGateCommand({ cwd: tmpDir, task: '1.2' });
+    expect((await readGateCache(tmpDir, '1.1'))?.ok).toBe(true);
+    expect((await readGateCache(tmpDir, '1.2'))?.ok).toBe(true);
+
+    await runAdvance({ cwd: tmpDir, task: '1.1' });
+    expect(process.exitCode).toBe(0);
+    await runAdvance({ cwd: tmpDir, task: '1.2' });
+    expect(process.exitCode).toBe(0);
+
+    const loaded = await loadPlan(tmpDir);
+    if (loaded.exists && loaded.valid) {
+      expect(loaded.plan.phases[0].tasks.map((t) => t.status)).toEqual(['done', 'done']);
+    }
+  });
+
+  it('advance refuses when the task cached signature is stale', async () => {
+    await runInit({ codex: true, cwd: tmpDir });
+    await setGates(tmpDir, { test: PASS });
+    await writePlan(tmpDir, twoTaskPlan());
+    await writeGateCache(tmpDir, { task: '1.1', signature: 'stale', ok: true, gates: ['test'], at: 'x' });
+
+    const logSpy = vi.mocked(console.log);
+    await runAdvance({ cwd: tmpDir, task: '1.1' });
+
+    expect(process.exitCode).toBe(1);
+    const output = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(output).toMatch(/stale/);
+    expect(output).toMatch(/agent-flow gate --task 1\.1/);
+  });
+
+  it('treats a corrupt or non-object cache file as an empty map', async () => {
+    const file = path.join(tmpDir, '.agent-flow/gate-cache.json');
+    await fs.ensureDir(path.dirname(file));
+    await fs.writeFile(file, '{not json');
+    expect(await readGateCache(tmpDir, '1.1')).toBeNull();
+    await writeGateCache(tmpDir, { task: '1.1', signature: 's', ok: true, gates: [], at: 'x' });
+    expect((await readGateCache(tmpDir, '1.1'))?.ok).toBe(true);
+
+    await fs.writeFile(file, '[1,2]');
+    expect(await readGateCache(tmpDir, '1.1')).toBeNull();
+    await fs.writeFile(file, '"str"');
+    expect(await readGateCache(tmpDir, '1.1')).toBeNull();
+  });
+
+  it('concurrent writeGateCache calls keep every record and leave no lock or temp files', async () => {
+    const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
+    await Promise.all(
+      ids.map((id) => writeGateCache(tmpDir, { task: id, signature: `sig-${id}`, ok: true, gates: ['test'], at: 'x' })),
+    );
+    for (const id of ids) {
+      expect((await readGateCache(tmpDir, id))?.signature).toBe(`sig-${id}`);
+    }
+    const left = await fs.readdir(path.join(tmpDir, '.agent-flow'));
+    expect(left.filter((f) => f.endsWith('.lock') || f.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('reads a legacy single-record cache as a one-entry map', async () => {
+    await fs.ensureDir(path.join(tmpDir, '.agent-flow'));
+    await fs.writeJson(path.join(tmpDir, '.agent-flow/gate-cache.json'), {
+      task: '9.9', signature: 'abc', ok: true, gates: ['test'], at: 'x',
+    });
+    expect((await readGateCache(tmpDir, '9.9'))?.signature).toBe('abc');
+    expect(await readGateCache(tmpDir, '1.1')).toBeNull();
+
+    await writeGateCache(tmpDir, { task: '1.1', signature: 's', ok: false, gates: [], at: 'y' });
+    expect((await readGateCache(tmpDir, '9.9'))?.ok).toBe(true);
+    expect((await readGateCache(tmpDir, '1.1'))?.ok).toBe(false);
   });
 });

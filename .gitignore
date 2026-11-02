@@ -19,3 +19,4 @@ coverage
 
 # Claude Code local permissions
 .claude/settings.local.json
+.agent-flow/gate-cache.json.lock

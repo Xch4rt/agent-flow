@@ -191,22 +191,89 @@ export type GateCache = {
   at: string;
 };
 
+export type GateCacheFile = Record<string, GateCache>;
+
 export function gateCachePath(root: string): string {
   return path.join(root, GATE_CACHE_RELATIVE);
 }
 
-export async function writeGateCache(root: string, cache: GateCache): Promise<void> {
+async function readGateCacheFile(root: string): Promise<GateCacheFile> {
   const file = gateCachePath(root);
-  await fs.ensureDir(path.dirname(file));
-  await fs.writeJson(file, cache, { spaces: 2 });
+  if (!(await fs.pathExists(file))) return {};
+  try {
+    const raw = (await fs.readJson(file)) as unknown;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const obj = raw as Record<string, unknown>;
+    // Legacy shape: a single record { task, signature, ok, gates, at }.
+    if (typeof obj.task === 'string' && typeof obj.signature === 'string') {
+      return { [obj.task]: obj as unknown as GateCache };
+    }
+    const out: GateCacheFile = {};
+    for (const [id, value] of Object.entries(obj)) {
+      if (value && typeof value === 'object' && typeof (value as GateCache).signature === 'string') {
+        out[id] = value as GateCache;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
 }
 
-export async function readGateCache(root: string): Promise<GateCache | null> {
-  const file = gateCachePath(root);
-  if (!(await fs.pathExists(file))) return null;
-  try {
-    return (await fs.readJson(file)) as GateCache;
-  } catch {
-    return null;
+const LOCK_RETRY_MS = 25;
+const LOCK_WAIT_MS = 2000;
+const LOCK_STALE_MS = 10_000;
+
+async function acquireLock(lockFile: string): Promise<void> {
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  for (;;) {
+    try {
+      const handle = await fs.open(lockFile, 'wx');
+      await fs.close(handle);
+      return;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      try {
+        const stat = await fs.stat(lockFile);
+        if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
+          await fs.remove(lockFile);
+          continue;
+        }
+      } catch {
+        continue; // lock vanished between open and stat: retry now
+      }
+      if (Date.now() > deadline) {
+        // Waited long enough: break the lock rather than lose the record.
+        await fs.remove(lockFile);
+        continue;
+      }
+      await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_MS));
+    }
   }
+}
+
+export async function writeGateCache(root: string, cache: GateCache): Promise<void> {
+  const file = gateCachePath(root);
+  const lockFile = `${file}.lock`;
+  await fs.ensureDir(path.dirname(file));
+  await acquireLock(lockFile);
+  try {
+    // Re-read inside the lock so concurrent writers never drop each other's entry.
+    const all = await readGateCacheFile(root);
+    all[cache.task] = cache;
+    const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+    try {
+      await fs.writeJson(tmp, all, { spaces: 2 });
+      await fs.rename(tmp, file);
+    } finally {
+      await fs.remove(tmp);
+    }
+  } finally {
+    await fs.remove(lockFile);
+  }
+}
+
+export async function readGateCache(root: string, taskId: string): Promise<GateCache | null> {
+  const all = await readGateCacheFile(root);
+  return all[taskId] ?? null;
 }
